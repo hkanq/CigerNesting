@@ -135,6 +135,7 @@ The solver is no longer limited to a single demo row placement pass. `NestingEng
 - `OverlapResolver` runs guided collision resolution while allowing temporarily invalid/overlapping layouts during exploration
 - `Compression` searches for safe movement with large-to-small step refinement and only accepts score-improving valid moves
 - `MultiStartSolver` runs attempts in parallel through the internal worker pool, cycling placement strategies, seeds, and part orderings within `timeLimitSeconds`, while preserving best-so-far
+- `UltraRefinement` refines the best layout locally with angle ladders, micro-translation correction, optional mirroring, and strict contour validation
 
 Solver quality smoke test target:
 
@@ -142,12 +143,33 @@ Solver quality smoke test target:
 build\NestingApp\Release\CigerNestingSolverQualitySmoke.exe <repo-root>
 ```
 
+Ultra refinement smoke test target:
+
+```powershell
+build\NestingApp\Release\CigerNestingUltraRefinementSmoke.exe
+```
+
+## 0.001 Degree Refinement
+
+The `Angle Precision` value from the right panel is connected to the engine:
+
+- `RotationMode::FixedStep` uses it as the coarse rotation step, with a safety cap to avoid pathological global sweeps.
+- `RotationMode::ContinuousRefine` uses it as the minimum local refinement step.
+
+When the user enters `0.001`, the solver does not scan all 360,000 possible global angles. Multi-start still works with coarse candidates, then `UltraRefinement` searches only around prioritized parts in the current best layout:
+
+- Fast: `1°`, `0.1°`
+- Balanced: `1°`, `0.1°`, `0.01°`
+- MaxQuality: `1°`, `0.1°`, `0.01°`, `0.001°`
+
+Each accepted refinement must improve score and remain valid: no part collision, no spacing violation, no sheet invalidity, and no forbidden-zone violation.
+
 ## Known Gaps
 
 - Clearance is conservative segment-distance validation, not true polygon offset.
 - DXF/PLT import support is intentionally small and ASCII-oriented.
 - Custom sheet containment is stronger for concave boundaries, holes, and forbidden zones, but sheet margin is still conservative and not a true inward offset.
 - User placement points are model/engine-ready, but canvas click editing is not enabled yet.
-- Ultra refinement is still a placeholder phase; 0.001 degree local refinement is not implemented yet.
+- Ultra refinement is active, but it is intentionally local and prioritized; it is not a full continuous nonlinear optimizer.
 - Direct2D, GPU evaluation, AI import, and Corel macro installation are intentionally not implemented yet.
 - The solver is now collision-driven v1 with parallel multi-start, but contact candidates are still geometric heuristics rather than a full NFP engine.

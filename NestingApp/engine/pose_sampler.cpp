@@ -6,6 +6,20 @@
 #include <random>
 
 namespace nest {
+namespace {
+
+constexpr double kMaxCoarseRotationSamples = 720.0;
+
+double safeFixedStepDegrees(double requestedStepDegrees) {
+    const double requested = std::max(0.001, requestedStepDegrees);
+    const double sampleCount = std::ceil(360.0 / requested);
+    if (sampleCount > kMaxCoarseRotationSamples) {
+        return 360.0 / kMaxCoarseRotationSamples;
+    }
+    return requested;
+}
+
+} // namespace
 
 std::vector<double> PoseSampler::coarseRotationSamples(const EngineSettings& settings) const {
     if (!settings.allowRotation || settings.rotationMode == RotationMode::None) {
@@ -16,7 +30,7 @@ std::vector<double> PoseSampler::coarseRotationSamples(const EngineSettings& set
     if (settings.rotationMode == RotationMode::FortyFiveDegrees) {
         step = 45.0;
     } else if (settings.rotationMode == RotationMode::FixedStep) {
-        step = std::max(0.001, settings.rotationStepDegrees);
+        step = safeFixedStepDegrees(settings.rotationStepDegrees);
     } else if (settings.rotationMode == RotationMode::ContinuousRefine) {
         step = 90.0;
     }

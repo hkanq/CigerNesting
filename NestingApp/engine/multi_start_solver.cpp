@@ -5,6 +5,7 @@
 #include "engine/overlap_resolver.h"
 #include "engine/parallel_collision_evaluator.h"
 #include "engine/pose_sampler.h"
+#include "engine/ultra_refinement.h"
 #include "engine/worker_pool.h"
 #include <algorithm>
 #include <chrono>
@@ -162,6 +163,18 @@ double elapsedSeconds(Clock::time_point started) {
     return std::chrono::duration<double>(Clock::now() - started).count();
 }
 
+double ultraReserveSeconds(const EngineSettings& settings, double totalLimit) {
+    switch (settings.qualityMode) {
+    case QualityMode::Fast:
+        return std::min(0.35, std::max(0.05, totalLimit * 0.06));
+    case QualityMode::MaxQuality:
+        return std::min(4.0, std::max(0.20, totalLimit * 0.22));
+    case QualityMode::Balanced:
+    default:
+        return std::min(1.5, std::max(0.10, totalLimit * 0.15));
+    }
+}
+
 struct AttemptResult {
     LayoutState state;
     int attempt = 0;
@@ -311,7 +324,9 @@ LayoutState MultiStartSolver::solve(
     }
 
     const auto strategies = strategySchedule(settings.placementStrategy);
-    const double limit = std::max(0.25, settings.timeLimitSeconds);
+    const double totalLimit = std::max(0.25, settings.timeLimitSeconds);
+    const double ultraReserve = ultraReserveSeconds(settings, totalLimit);
+    const double searchLimit = std::max(0.05, totalLimit - ultraReserve);
     const size_t attemptThreads = std::max<size_t>(1, ParallelCollisionEvaluator::resolveThreadCount(settings));
     WorkerPool attemptPool(attemptThreads);
     std::vector<std::future<AttemptResult>> futures;
@@ -340,7 +355,7 @@ LayoutState MultiStartSolver::solve(
         }));
     };
 
-    while (!stopRequested.load() && futures.size() < attemptThreads && elapsedSeconds(started) < limit) {
+    while (!stopRequested.load() && futures.size() < attemptThreads && elapsedSeconds(started) < searchLimit) {
         launchAttempt(nextAttempt++);
     }
 
@@ -364,7 +379,7 @@ LayoutState MultiStartSolver::solve(
                 }
 
                 if (callback) {
-                    const double progressBase = std::min(0.84, 0.18 + elapsedSeconds(started) / limit * 0.66);
+                    const double progressBase = std::min(0.84, 0.18 + elapsedSeconds(started) / searchLimit * 0.66);
                     callback({current.collisionCount == 0 ? SolverPhase::Compression : SolverPhase::CollisionResolution, progressBase, current, best, elapsedSeconds(started)});
                 }
             } else {
@@ -372,7 +387,7 @@ LayoutState MultiStartSolver::solve(
             }
         }
 
-        while (!stopRequested.load() && elapsedSeconds(started) < limit && futures.size() < attemptThreads) {
+        while (!stopRequested.load() && elapsedSeconds(started) < searchLimit && futures.size() < attemptThreads) {
             launchAttempt(nextAttempt++);
         }
 
@@ -381,8 +396,19 @@ LayoutState MultiStartSolver::solve(
         }
     }
 
-    if (callback) {
-        callback({SolverPhase::UltraRefinement, 0.90, current, best, elapsedSeconds(started)});
+    if (!stopRequested.load()) {
+        if (callback) {
+            callback({SolverPhase::UltraRefinement, 0.88, best, best, elapsedSeconds(started)});
+        }
+        UltraRefinement ultraRefinement;
+        LayoutState refined = ultraRefinement.refine(document, settings, best, globalPenalty, attemptPool, stopRequested);
+        if (refined.valid() && (!best.valid() || refined.totalScore < best.totalScore)) {
+            best = refined;
+        }
+        current = refined.valid() ? refined : best;
+        if (callback) {
+            callback({SolverPhase::UltraRefinement, 0.94, current, best, elapsedSeconds(started)});
+        }
     }
     return best;
 }
