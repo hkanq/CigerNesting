@@ -30,8 +30,12 @@ HWND createLabel(HWND parent, HINSTANCE instance, const wchar_t* text) {
     return CreateWindowW(L"STATIC", text, WS_CHILD | WS_VISIBLE | SS_LEFT, 0, 0, 160, 20, parent, nullptr, instance, nullptr);
 }
 
+HMENU controlMenu(int id) {
+    return reinterpret_cast<HMENU>(static_cast<INT_PTR>(id));
+}
+
 HWND createEdit(HWND parent, HINSTANCE instance, int id, const wchar_t* text) {
-    return CreateWindowW(L"EDIT", text, WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL, 0, 0, 86, 24, parent, reinterpret_cast<HMENU>(id), instance, nullptr);
+    return CreateWindowW(L"EDIT", text, WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL, 0, 0, 86, 24, parent, controlMenu(id), instance, nullptr);
 }
 
 } // namespace
@@ -58,11 +62,26 @@ void RightPanel::createControls(HINSTANCE instance) {
     createLabel(hwnd_, instance, loc.text(TextId::Margin));
     marginEdit_ = createEdit(hwnd_, instance, uiid::editMargin, L"10");
 
-    rotationCheck_ = CreateWindowW(L"BUTTON", loc.text(TextId::RotationEnabled), WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, 0, 0, 140, 22, hwnd_, reinterpret_cast<HMENU>(uiid::checkRotation), instance, nullptr);
+    createLabel(hwnd_, instance, loc.text(TextId::PlacementStart));
+    placementCombo_ = CreateWindowW(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST, 0, 0, 150, 220, hwnd_, controlMenu(uiid::comboPlacementStart), instance, nullptr);
+    SendMessageW(placementCombo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(loc.text(TextId::BottomLeft)));
+    SendMessageW(placementCombo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(loc.text(TextId::TopLeft)));
+    SendMessageW(placementCombo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(loc.text(TextId::BottomRight)));
+    SendMessageW(placementCombo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(loc.text(TextId::TopRight)));
+    SendMessageW(placementCombo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(loc.text(TextId::LeftToRight)));
+    SendMessageW(placementCombo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(loc.text(TextId::RightToLeft)));
+    SendMessageW(placementCombo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(loc.text(TextId::TopToBottom)));
+    SendMessageW(placementCombo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(loc.text(TextId::BottomToTop)));
+    SendMessageW(placementCombo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(loc.text(TextId::CenterOut)));
+    SendMessageW(placementCombo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(loc.text(TextId::OutsideIn)));
+    SendMessageW(placementCombo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(loc.text(TextId::UserPoints)));
+    SendMessageW(placementCombo_, CB_SETCURSEL, 0, 0);
+
+    rotationCheck_ = CreateWindowW(L"BUTTON", loc.text(TextId::RotationEnabled), WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, 0, 0, 140, 22, hwnd_, controlMenu(uiid::checkRotation), instance, nullptr);
     SendMessageW(rotationCheck_, BM_SETCHECK, BST_CHECKED, 0);
 
     createLabel(hwnd_, instance, loc.text(TextId::RotationMode));
-    rotationModeCombo_ = CreateWindowW(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST, 0, 0, 150, 160, hwnd_, reinterpret_cast<HMENU>(uiid::comboRotationMode), instance, nullptr);
+    rotationModeCombo_ = CreateWindowW(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST, 0, 0, 150, 160, hwnd_, controlMenu(uiid::comboRotationMode), instance, nullptr);
     SendMessageW(rotationModeCombo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(loc.text(TextId::None)));
     SendMessageW(rotationModeCombo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(loc.text(TextId::RightAngles)));
     SendMessageW(rotationModeCombo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(loc.text(TextId::FortyFiveDegrees)));
@@ -73,10 +92,10 @@ void RightPanel::createControls(HINSTANCE instance) {
     createLabel(hwnd_, instance, loc.text(TextId::AnglePrecision));
     angleStepEdit_ = createEdit(hwnd_, instance, uiid::editAngleStep, L"1.0");
 
-    mirrorCheck_ = CreateWindowW(L"BUTTON", loc.text(TextId::MirroringEnabled), WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, 0, 0, 150, 22, hwnd_, reinterpret_cast<HMENU>(uiid::checkMirroring), instance, nullptr);
+    mirrorCheck_ = CreateWindowW(L"BUTTON", loc.text(TextId::MirroringEnabled), WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, 0, 0, 150, 22, hwnd_, controlMenu(uiid::checkMirroring), instance, nullptr);
 
     createLabel(hwnd_, instance, loc.text(TextId::QualityMode));
-    qualityCombo_ = CreateWindowW(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST, 0, 0, 150, 140, hwnd_, reinterpret_cast<HMENU>(uiid::comboQuality), instance, nullptr);
+    qualityCombo_ = CreateWindowW(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST, 0, 0, 150, 140, hwnd_, controlMenu(uiid::comboQuality), instance, nullptr);
     SendMessageW(qualityCombo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(loc.text(TextId::Fast)));
     SendMessageW(qualityCombo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(loc.text(TextId::Balanced)));
     SendMessageW(qualityCombo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(loc.text(TextId::MaxQuality)));
@@ -87,9 +106,9 @@ void RightPanel::createControls(HINSTANCE instance) {
     createLabel(hwnd_, instance, loc.text(TextId::ThreadCount));
     threadEdit_ = createEdit(hwnd_, instance, uiid::editThreads, L"0");
 
-    startButton_ = CreateWindowW(L"BUTTON", loc.text(TextId::Start), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 0, 0, 100, 30, hwnd_, reinterpret_cast<HMENU>(uiid::buttonStart), instance, nullptr);
-    stopButton_ = CreateWindowW(L"BUTTON", loc.text(TextId::Stop), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 0, 0, 100, 30, hwnd_, reinterpret_cast<HMENU>(uiid::buttonStop), instance, nullptr);
-    corelExportButton_ = CreateWindowW(L"BUTTON", loc.text(TextId::ExportToCorel), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 0, 0, 220, 30, hwnd_, reinterpret_cast<HMENU>(uiid::buttonCorelExport), instance, nullptr);
+    startButton_ = CreateWindowW(L"BUTTON", loc.text(TextId::Start), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 0, 0, 100, 30, hwnd_, controlMenu(uiid::buttonStart), instance, nullptr);
+    stopButton_ = CreateWindowW(L"BUTTON", loc.text(TextId::Stop), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 0, 0, 100, 30, hwnd_, controlMenu(uiid::buttonStop), instance, nullptr);
+    corelExportButton_ = CreateWindowW(L"BUTTON", loc.text(TextId::ExportToCorel), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 0, 0, 220, 30, hwnd_, controlMenu(uiid::buttonCorelExport), instance, nullptr);
 
     layoutControls();
 }
@@ -110,7 +129,7 @@ void RightPanel::layoutControls() {
     const int row = 34;
     const int editW = 80;
 
-    const int labelYs[] = {52, 86, 120, 154, 222, 256, 324, 358, 392};
+    const int labelYs[] = {52, 86, 120, 154, 188, 256, 290, 358, 392, 426};
     int labelIndex = 0;
     HWND child = GetWindow(hwnd_, GW_CHILD);
     while (child) {
@@ -131,6 +150,8 @@ void RightPanel::layoutControls() {
         y += row;
     }
 
+    MoveWindow(placementCombo_, editX - 44, y, 124, 180, TRUE);
+    y += row;
     MoveWindow(rotationCheck_, labelX, y + 4, 150, 22, TRUE);
     y += row;
     MoveWindow(rotationModeCombo_, editX - 28, y, 108, 120, TRUE);

@@ -16,11 +16,26 @@ enum class QualityMode {
     MaxQuality
 };
 
+enum class PlacementStrategy {
+    BottomLeft,
+    TopLeft,
+    BottomRight,
+    TopRight,
+    LeftToRight,
+    RightToLeft,
+    TopToBottom,
+    BottomToTop,
+    CenterOut,
+    OutsideIn,
+    UserPoints
+};
+
 struct EngineSettings {
     double sheetWidth = 1000.0;
     double sheetHeight = 600.0;
     double partSpacing = 5.0;
     double margin = 10.0;
+    PlacementStrategy placementStrategy = PlacementStrategy::BottomLeft;
     bool allowRotation = true;
     RotationMode rotationMode = RotationMode::RightAngles;
     double rotationStepDegrees = 1.0;

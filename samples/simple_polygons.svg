@@ -1,0 +1,6 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" width="420" height="260" viewBox="0 0 420 260">
+  <polygon points="20,20 120,20 95,95 35,110" />
+  <polygon points="150,30 235,35 245,115 165,105" />
+  <path d="M280 35 L365 35 L390 90 L330 130 L270 95 Z" />
+  <polyline points="40,165 100,145 145,185 110,225 55,215 40,165" />
+</svg>

@@ -95,8 +95,8 @@ void CanvasView::fitToDocument() {
     }
     RECT rc{};
     GetClientRect(hwnd_, &rc);
-    const int width = std::max(1, rc.right - rc.left);
-    const int height = std::max(1, rc.bottom - rc.top);
+    const int width = std::max(1, static_cast<int>(rc.right - rc.left));
+    const int height = std::max(1, static_cast<int>(rc.bottom - rc.top));
     AABB bounds = document_->contentBounds();
     if (!bounds.isValid() || bounds.width() <= 1e-6 || bounds.height() <= 1e-6) {
         return;

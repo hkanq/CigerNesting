@@ -34,6 +34,7 @@ private:
     HWND sheetHeightEdit_ = nullptr;
     HWND spacingEdit_ = nullptr;
     HWND marginEdit_ = nullptr;
+    HWND placementCombo_ = nullptr;
     HWND rotationCheck_ = nullptr;
     HWND rotationModeCombo_ = nullptr;
     HWND angleStepEdit_ = nullptr;

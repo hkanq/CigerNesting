@@ -98,11 +98,12 @@ ImportResult PltParser::parseText(const std::string& text) const {
         const std::string raw = text.substr(begin, end == std::string::npos ? std::string::npos : end - begin);
         begin = end == std::string::npos ? text.size() : end + 1;
 
-        if (raw.size() < 2) {
+        const std::string statement = trimUpper(raw);
+        if (statement.size() < 2) {
             continue;
         }
-        const std::string cmd = trimUpper(raw.substr(0, 2));
-        const std::string args = raw.size() > 2 ? raw.substr(2) : std::string{};
+        const std::string cmd = statement.substr(0, 2);
+        const std::string args = statement.size() > 2 ? statement.substr(2) : std::string{};
 
         if (cmd == "IN") {
             finishPolyline(polyline, result.parts, counter);

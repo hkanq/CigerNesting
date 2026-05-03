@@ -5,6 +5,7 @@
 #include "geometry/bezier.h"
 #include "geometry/flatten.h"
 #include "geometry/polygon_utils.h"
+#include "geometry/winding.h"
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>

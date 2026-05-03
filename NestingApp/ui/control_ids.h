@@ -13,13 +13,14 @@ constexpr int editSheetWidth = 2001;
 constexpr int editSheetHeight = 2002;
 constexpr int editSpacing = 2003;
 constexpr int editMargin = 2004;
-constexpr int checkRotation = 2005;
-constexpr int comboRotationMode = 2006;
-constexpr int editAngleStep = 2007;
-constexpr int checkMirroring = 2008;
-constexpr int comboQuality = 2009;
-constexpr int editTimeLimit = 2010;
-constexpr int editThreads = 2011;
+constexpr int comboPlacementStart = 2005;
+constexpr int checkRotation = 2006;
+constexpr int comboRotationMode = 2007;
+constexpr int editAngleStep = 2008;
+constexpr int checkMirroring = 2009;
+constexpr int comboQuality = 2010;
+constexpr int editTimeLimit = 2011;
+constexpr int editThreads = 2012;
 
 constexpr int timerSolver = 3001;
 

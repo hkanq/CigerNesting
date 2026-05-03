@@ -95,6 +95,7 @@ bool MainWindow::create(HINSTANCE instance, int showCommand) {
         return false;
     }
 
+    SetWindowTextW(hwnd_, Localization::instance().text(TextId::AppTitle));
     ShowWindow(hwnd_, showCommand);
     UpdateWindow(hwnd_);
     return true;

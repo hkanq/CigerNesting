@@ -24,6 +24,10 @@ void registerToolbarClass(HINSTANCE instance) {
     registered = true;
 }
 
+HMENU controlMenu(int id) {
+    return reinterpret_cast<HMENU>(static_cast<INT_PTR>(id));
+}
+
 } // namespace
 
 bool Toolbar::create(HWND parent, HINSTANCE instance) {
@@ -39,11 +43,11 @@ bool Toolbar::create(HWND parent, HINSTANCE instance) {
 
 void Toolbar::createControls(HINSTANCE instance) {
     const auto& loc = Localization::instance();
-    openButton_ = CreateWindowW(L"BUTTON", loc.text(TextId::FileOpen), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 0, 0, 90, 28, hwnd_, reinterpret_cast<HMENU>(uiid::buttonOpen), instance, nullptr);
-    saveButton_ = CreateWindowW(L"BUTTON", loc.text(TextId::Save), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 0, 0, 70, 28, hwnd_, reinterpret_cast<HMENU>(uiid::buttonSave), instance, nullptr);
-    startButton_ = CreateWindowW(L"BUTTON", loc.text(TextId::Start), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 0, 0, 70, 28, hwnd_, reinterpret_cast<HMENU>(uiid::buttonStart), instance, nullptr);
-    stopButton_ = CreateWindowW(L"BUTTON", loc.text(TextId::Stop), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 0, 0, 70, 28, hwnd_, reinterpret_cast<HMENU>(uiid::buttonStop), instance, nullptr);
-    corelButton_ = CreateWindowW(L"BUTTON", loc.text(TextId::CorelConnection), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 0, 0, 130, 28, hwnd_, reinterpret_cast<HMENU>(uiid::buttonCorelConnect), instance, nullptr);
+    openButton_ = CreateWindowW(L"BUTTON", loc.text(TextId::FileOpen), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 0, 0, 90, 28, hwnd_, controlMenu(uiid::buttonOpen), instance, nullptr);
+    saveButton_ = CreateWindowW(L"BUTTON", loc.text(TextId::Save), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 0, 0, 70, 28, hwnd_, controlMenu(uiid::buttonSave), instance, nullptr);
+    startButton_ = CreateWindowW(L"BUTTON", loc.text(TextId::Start), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 0, 0, 70, 28, hwnd_, controlMenu(uiid::buttonStart), instance, nullptr);
+    stopButton_ = CreateWindowW(L"BUTTON", loc.text(TextId::Stop), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 0, 0, 70, 28, hwnd_, controlMenu(uiid::buttonStop), instance, nullptr);
+    corelButton_ = CreateWindowW(L"BUTTON", loc.text(TextId::CorelConnection), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 0, 0, 130, 28, hwnd_, controlMenu(uiid::buttonCorelConnect), instance, nullptr);
     phaseLabel_ = CreateWindowW(L"STATIC", loc.text(TextId::Idle), WS_CHILD | WS_VISIBLE | SS_LEFT, 0, 0, 200, 22, hwnd_, nullptr, instance, nullptr);
     layoutControls();
 }
