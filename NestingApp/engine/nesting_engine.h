@@ -1,0 +1,48 @@
+#pragma once
+
+#include "core/document.h"
+#include "engine/engine_settings.h"
+#include "engine/solver_state.h"
+#include <atomic>
+#include <mutex>
+#include <thread>
+
+namespace nest {
+
+class NestingEngine {
+public:
+    NestingEngine();
+    ~NestingEngine();
+
+    NestingEngine(const NestingEngine&) = delete;
+    NestingEngine& operator=(const NestingEngine&) = delete;
+
+    void setDocument(Document* doc);
+    void setSettings(const EngineSettings& settings);
+
+    void start();
+    void stop();
+    bool isRunning() const;
+
+    SolverSnapshot getLatestSnapshot() const;
+    SolverResult getBestResult() const;
+
+private:
+    void run();
+    void publishSnapshot(SolverPhase phase, double progress, const std::vector<Pose>& current, const std::vector<Pose>& best, size_t collisions, double overlap, double utilization, bool running, double elapsedSeconds);
+
+    Document* document_ = nullptr;
+    EngineSettings settings_{};
+
+    std::thread worker_;
+    std::atomic_bool running_{false};
+    std::atomic_bool stopRequested_{false};
+
+    mutable std::mutex snapshotMutex_;
+    SolverSnapshot latestSnapshot_;
+
+    mutable std::mutex resultMutex_;
+    SolverResult bestResult_;
+};
+
+} // namespace nest
