@@ -1,5 +1,6 @@
 #include "geometry/collision.h"
 
+#include "geometry/clearance.h"
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -478,16 +479,7 @@ bool partsRespectSpacing(const Part& a, const Pose& poseA, const Part& b, const 
     if (partsCollide(a, poseA, b, poseB, eps)) {
         return false;
     }
-    if (clearance.partSpacing <= eps) {
-        return true;
-    }
-
-    const TransformedPart partA = transformPart(a, poseA, 0);
-    const TransformedPart partB = transformPart(b, poseB, 1);
-    if (!partA.bounds.expanded(clearance.partSpacing + eps).overlaps(partB.bounds.expanded(clearance.partSpacing + eps))) {
-        return true;
-    }
-    return minBoundaryDistance(partA, partB, eps) + eps >= clearance.partSpacing;
+    return partsRespectClearance(a, poseA, b, poseB, clearance.partSpacing, eps);
 }
 
 bool isPartInsideSheet(const Part& part, const Pose& pose, const Sheet& sheet, double eps) {
@@ -513,30 +505,7 @@ double minimumDistanceToSheetFeatures(const Part& part, const Pose& pose, const 
 }
 
 bool partRespectsSheetMargin(const Part& part, const Pose& pose, const Sheet& sheet, const ClearanceSettings& clearance) {
-    const double eps = clearance.tolerance;
-    if (!isPartInsideSheet(part, pose, sheet, eps)) {
-        return false;
-    }
-    if (clearance.sheetMargin <= eps) {
-        return true;
-    }
-
-    const TransformedPart transformed = transformPart(part, pose);
-    const Ring outer = physicalSheetOuter(sheet);
-    if (minBoundaryDistanceToRing(transformed, outer, eps) + eps < clearance.sheetMargin) {
-        return false;
-    }
-    for (const Ring& hole : sheetHoles(sheet)) {
-        if (minBoundaryDistanceToRing(transformed, hole, eps) + eps < clearance.sheetMargin) {
-            return false;
-        }
-    }
-    for (const Ring& zone : sheetForbiddenZones(sheet)) {
-        if (minBoundaryDistanceToRing(transformed, zone, eps) + eps < clearance.sheetMargin) {
-            return false;
-        }
-    }
-    return true;
+    return partRespectsSheetClearance(part, pose, sheet, clearance.sheetMargin, clearance.tolerance);
 }
 
 bool ringsOverlap(const Ring& a, const Ring& b, double tolerance) {

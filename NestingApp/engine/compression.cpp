@@ -1,6 +1,7 @@
 #include "engine/compression.h"
 
 #include "engine/layout_score.h"
+#include "geometry/clearance.h"
 #include "geometry/collision.h"
 #include <algorithm>
 #include <cmath>
@@ -9,18 +10,17 @@ namespace nest {
 namespace {
 
 bool candidateIsValid(const Document& document, const std::vector<Pose>& poses, size_t movingIndex, const Pose& candidate, const EngineSettings& settings) {
-    if (!isPartInsideSheet(document.parts[movingIndex], candidate, document.sheet) ||
-        overlapsSheetHolesOrForbiddenZones(document.parts[movingIndex], candidate, document.sheet)) {
+    if (!partRespectsSheetClearance(document.parts[movingIndex], candidate, document.sheet, settings.margin, settings.collisionTolerance)) {
         return false;
     }
     for (size_t i = 0; i < document.parts.size(); ++i) {
         if (i == movingIndex || i >= poses.size()) {
             continue;
         }
-        if (partsOverlap(document.parts[movingIndex], candidate, document.parts[i], poses[i], settings.collisionTolerance)) {
+        if (partsCollide(document.parts[movingIndex], candidate, document.parts[i], poses[i], settings.collisionTolerance)) {
             return false;
         }
-        if (transformedBounds(document.parts[movingIndex], candidate).expanded(settings.partSpacing).overlaps(transformedBounds(document.parts[i], poses[i]))) {
+        if (!partsRespectClearance(document.parts[movingIndex], candidate, document.parts[i], poses[i], settings.partSpacing, settings.collisionTolerance)) {
             return false;
         }
     }

@@ -2,8 +2,11 @@
 
 #include "core/aabb.h"
 #include "engine/broadphase.h"
+#include "geometry/clearance.h"
 #include "geometry/collision.h"
 #include <algorithm>
+#include <cmath>
+#include <limits>
 
 namespace nest {
 namespace {
@@ -17,6 +20,32 @@ constexpr double kCompactnessReward = 0.02;
 
 double safeSheetArea(const Document& document) {
     return std::max(1.0, (document.sheet.width - document.sheet.margin * 2.0) * (document.sheet.height - document.sheet.margin * 2.0));
+}
+
+Ring physicalSheetOuter(const Sheet& sheet) {
+    if (sheet.hasCustomProfile() && !sheet.profile().outerContour.points.empty()) {
+        return sheet.profile().outerContour;
+    }
+    return sheet.makeRectangularOuterContour();
+}
+
+double sheetFeatureDistance(const Part& part, const Pose& pose, const Sheet& sheet, double requiredMargin, double eps) {
+    const TransformedPart transformed = transformPart(part, pose);
+    double best = minimumPartToRingDistance(transformed, physicalSheetOuter(sheet), requiredMargin, eps).minDistance;
+    for (const Ring& hole : sheet.profile().holes) {
+        best = std::min(best, minimumPartToRingDistance(transformed, hole, requiredMargin, eps).minDistance);
+    }
+    for (const Ring& zone : sheet.profile().forbiddenZones) {
+        best = std::min(best, minimumPartToRingDistance(transformed, zone, requiredMargin, eps).minDistance);
+    }
+    return best;
+}
+
+double clearanceDeficit(double required, double actual) {
+    if (!std::isfinite(actual)) {
+        return 0.0;
+    }
+    return std::max(0.0, required - actual) / std::max(1.0, required);
 }
 
 } // namespace
@@ -63,8 +92,15 @@ LayoutState LayoutScore::evaluate(
             ++state.collisionCount;
             state.collisionPairs.push_back({a, b});
             state.overlapPenalty += pairWeight * (1.0 + aabbOverlapArea(boxA, boxB));
-        } else if (!partsRespectSpacing(document.parts[a], poses[a], document.parts[b], poses[b], clearance)) {
-            state.spacingPenalty += pairWeight;
+        } else {
+            const ClearanceResult clearanceResult = minimumBoundaryDistance(
+                transformPart(document.parts[a], poses[a], static_cast<int>(a)),
+                transformPart(document.parts[b], poses[b], static_cast<int>(b)),
+                clearance.partSpacing,
+                settings.collisionTolerance);
+            if (!clearanceResult.valid) {
+                state.spacingPenalty += pairWeight * std::max(0.01, clearanceDeficit(clearance.partSpacing, clearanceResult.minDistance));
+            }
         }
     }
 
@@ -76,7 +112,8 @@ LayoutState LayoutScore::evaluate(
         }
         if (!partRespectsSheetMargin(document.parts[i], poses[i], document.sheet, clearance)) {
             invalid = true;
-            state.sheetPenalty += 1.0;
+            const double minDistance = sheetFeatureDistance(document.parts[i], poses[i], document.sheet, clearance.sheetMargin, settings.collisionTolerance);
+            state.sheetPenalty += std::max(0.01, clearanceDeficit(clearance.sheetMargin, minDistance));
         }
         if (invalid) {
             ++state.invalidPartCount;

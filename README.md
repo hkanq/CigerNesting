@@ -113,14 +113,22 @@ The first production-oriented contour validation layer is active:
 - parts may occupy another part's hole as long as they do not touch/intersect solid material
 - sheet containment validates rectangular sheets, custom sheet outer contours, sheet holes, and forbidden zones
 - custom sheet containment checks boundary crossings and multiple samples along each solid edge, so concave sheet cases are no longer limited to vertex/midpoint validation
-- clearance has a real API through `ClearanceSettings`, `partsRespectSpacing`, and `partRespectsSheetMargin`
+- clearance has a central boundary-distance API through `geometry/clearance.*`
+- part spacing is measured between real part boundaries, including outer and hole rings
+- sheet margin is measured from part boundaries to sheet outer, sheet hole, and forbidden-zone boundaries
 
-The current clearance implementation is conservative and distance-based. It intentionally does not yet perform true polygon offsetting, but the interface is designed so a future offset engine can replace the internals without changing solver/UI boundaries.
+Collision and clearance are intentionally separate. A small part can fit inside a donut or B-like hole without collision, but it still must keep the requested clearance from the hole boundary. The current clearance implementation is segment-distance based and uses ring AABB pruning and early invalid exits. It intentionally does not yet perform true polygon offsetting, but the interface is designed so a future offset engine can replace the internals without changing solver/UI boundaries.
 
 Geometry smoke test target:
 
 ```powershell
 build\NestingApp\Release\CigerNestingGeometryCollisionSmoke.exe
+```
+
+Clearance smoke test target:
+
+```powershell
+build\NestingApp\Release\CigerNestingClearanceSmoke.exe
 ```
 
 ## Continuous Solver V1

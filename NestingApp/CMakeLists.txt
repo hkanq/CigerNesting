@@ -26,6 +26,7 @@ target_link_libraries(CigerNesting PRIVATE user32 gdi32 comdlg32 shell32)
 
 add_executable(CigerNestingGeometryCollisionSmoke
     tests/geometry_collision_smoke.cpp
+    geometry/clearance.cpp
     geometry/collision.cpp
     geometry/transformed_shape.cpp
 )
@@ -38,6 +39,7 @@ add_executable(CigerNestingSolverQualitySmoke
     import/dxf_parser.cpp
     geometry/arc.cpp
     geometry/bezier.cpp
+    geometry/clearance.cpp
     geometry/flatten.cpp
     geometry/winding.cpp
     geometry/polygon_utils.cpp
@@ -60,6 +62,7 @@ add_executable(CigerNestingSolverQualitySmoke
 
 add_executable(CigerNestingUltraRefinementSmoke
     tests/ultra_refinement_smoke.cpp
+    geometry/clearance.cpp
     geometry/collision.cpp
     geometry/transformed_shape.cpp
     geometry/spatial_grid.cpp
@@ -71,21 +74,32 @@ add_executable(CigerNestingUltraRefinementSmoke
     engine/worker_pool.cpp
 )
 
+add_executable(CigerNestingClearanceSmoke
+    tests/clearance_smoke.cpp
+    geometry/clearance.cpp
+    geometry/collision.cpp
+    geometry/transformed_shape.cpp
+)
+
 target_include_directories(CigerNestingGeometryCollisionSmoke PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_definitions(CigerNestingGeometryCollisionSmoke PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
 target_include_directories(CigerNestingSolverQualitySmoke PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_definitions(CigerNestingSolverQualitySmoke PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
 target_include_directories(CigerNestingUltraRefinementSmoke PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_definitions(CigerNestingUltraRefinementSmoke PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
+target_include_directories(CigerNestingClearanceSmoke PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_definitions(CigerNestingClearanceSmoke PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
 
 if(MSVC)
     target_compile_options(CigerNesting PRIVATE /W4 /permissive- /EHsc /utf-8)
     target_compile_options(CigerNestingGeometryCollisionSmoke PRIVATE /W4 /permissive- /EHsc /utf-8)
     target_compile_options(CigerNestingSolverQualitySmoke PRIVATE /W4 /permissive- /EHsc /utf-8)
     target_compile_options(CigerNestingUltraRefinementSmoke PRIVATE /W4 /permissive- /EHsc /utf-8)
+    target_compile_options(CigerNestingClearanceSmoke PRIVATE /W4 /permissive- /EHsc /utf-8)
 else()
     target_compile_options(CigerNesting PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_options(CigerNestingGeometryCollisionSmoke PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_options(CigerNestingSolverQualitySmoke PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_options(CigerNestingUltraRefinementSmoke PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(CigerNestingClearanceSmoke PRIVATE -Wall -Wextra -Wpedantic)
 endif()
