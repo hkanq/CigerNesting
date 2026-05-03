@@ -1,5 +1,6 @@
 #include "app/main_window.h"
 
+#include "localization/localization.h"
 #include "ui/control_ids.h"
 #include "ui/layout.h"
 #include <commdlg.h>
@@ -29,14 +30,45 @@ void registerMainWindowClass(HINSTANCE instance) {
     registered = true;
 }
 
-std::wstring phaseLine(const SolverSnapshot& snapshot) {
-    if (snapshot.phaseName.empty()) {
-        return L"Idle";
+TextId textIdForPhase(SolverPhase phase) {
+    switch (phase) {
+    case SolverPhase::Idle: return TextId::Idle;
+    case SolverPhase::PrepareGeometry: return TextId::PrepareGeometry;
+    case SolverPhase::InitialPlacement: return TextId::InitialPlacement;
+    case SolverPhase::Exploration: return TextId::Exploration;
+    case SolverPhase::CollisionResolution: return TextId::CollisionResolution;
+    case SolverPhase::Compression: return TextId::Compression;
+    case SolverPhase::UltraRefinement: return TextId::UltraRefinement;
+    case SolverPhase::FinalValidation: return TextId::FinalValidation;
+    case SolverPhase::Done: return TextId::Done;
+    case SolverPhase::Stopped: return TextId::Stopped;
     }
+    return TextId::Idle;
+}
+
+std::wstring phaseLine(const SolverSnapshot& snapshot) {
+    const auto& loc = Localization::instance();
     std::wostringstream out;
-    out << std::wstring(snapshot.phaseName.begin(), snapshot.phaseName.end())
-        << L"  " << static_cast<int>(snapshot.progress * 100.0) << L"%";
+    out << loc.text(textIdForPhase(snapshot.phase)) << L"  " << static_cast<int>(snapshot.progress * 100.0) << L"%";
     return out.str();
+}
+
+std::wstring makeFileFilter() {
+    const auto& loc = Localization::instance();
+    std::wstring filter;
+    auto append = [&](TextId label, const wchar_t* pattern) {
+        filter += loc.text(label);
+        filter.push_back(L'\0');
+        filter += pattern;
+        filter.push_back(L'\0');
+    };
+    append(TextId::FileFilterSupported, L"*.svg;*.dxf;*.plt;*.hpgl");
+    append(TextId::FileFilterSvg, L"*.svg");
+    append(TextId::FileFilterDxf, L"*.dxf");
+    append(TextId::FileFilterPlt, L"*.plt;*.hpgl");
+    append(TextId::FileFilterAll, L"*.*");
+    filter.push_back(L'\0');
+    return filter;
 }
 
 } // namespace
@@ -48,7 +80,7 @@ bool MainWindow::create(HINSTANCE instance, int showCommand) {
     hwnd_ = CreateWindowExW(
         0,
         kMainWindowClassName,
-        L"CigerNesting",
+        Localization::instance().text(TextId::AppTitle),
         WS_OVERLAPPEDWINDOW,
         CW_USEDEFAULT,
         CW_USEDEFAULT,
@@ -141,12 +173,13 @@ void MainWindow::onSize(int width, int height) {
 }
 
 void MainWindow::onCommand(int id) {
+    const auto& loc = Localization::instance();
     switch (id) {
     case uiid::buttonOpen:
         openFile();
         break;
     case uiid::buttonSave:
-        MessageBoxW(hwnd_, L"Kaydet altyapisi hazir; dosya formati sonraki adimda netlestirilecek.", L"CigerNesting", MB_OK | MB_ICONINFORMATION);
+        MessageBoxW(hwnd_, loc.text(TextId::SaveReady), loc.text(TextId::AppTitle), MB_OK | MB_ICONINFORMATION);
         break;
     case uiid::buttonStart:
         startNesting();
@@ -155,7 +188,7 @@ void MainWindow::onCommand(int id) {
         stopNesting();
         break;
     case uiid::buttonCorelConnect:
-        MessageBoxW(hwnd_, L"Corel bridge mimarisi hazir. Makro kurulumu bu asamada bilincli olarak pasif.", L"Corel Bridge", MB_OK | MB_ICONINFORMATION);
+        MessageBoxW(hwnd_, loc.text(TextId::CorelBridgeReady), loc.text(TextId::AppTitle), MB_OK | MB_ICONINFORMATION);
         break;
     case uiid::buttonCorelExport:
         exportCorelSession();
@@ -166,13 +199,16 @@ void MainWindow::onCommand(int id) {
 }
 
 void MainWindow::openFile() {
+    const auto& loc = Localization::instance();
+    const std::wstring fileFilter = makeFileFilter();
     wchar_t fileName[MAX_PATH]{};
     OPENFILENAMEW ofn{};
     ofn.lStructSize = sizeof(ofn);
     ofn.hwndOwner = hwnd_;
     ofn.lpstrFile = fileName;
     ofn.nMaxFile = MAX_PATH;
-    ofn.lpstrFilter = L"Supported Files\0*.svg;*.dxf;*.plt;*.hpgl\0SVG Files\0*.svg\0DXF Files\0*.dxf\0PLT/HPGL Files\0*.plt;*.hpgl\0All Files\0*.*\0";
+    ofn.lpstrFilter = fileFilter.c_str();
+    ofn.lpstrTitle = loc.text(TextId::OpenFilePrompt);
     ofn.nFilterIndex = 1;
     ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
 
@@ -183,7 +219,7 @@ void MainWindow::openFile() {
     const EngineSettings settings = rightPanel_.getSettings();
     ImportResult imported = importer_.importFile(fileName, settings.curveFlattenTolerance);
     if (!imported.ok) {
-        MessageBoxW(hwnd_, imported.message.empty() ? L"Import failed" : imported.message.c_str(), L"Import", MB_OK | MB_ICONERROR);
+        MessageBoxW(hwnd_, loc.text(TextId::ImportFailed), loc.text(TextId::AppTitle), MB_OK | MB_ICONERROR);
         return;
     }
 
@@ -201,7 +237,7 @@ void MainWindow::openFile() {
     leftPanel_.setFileInfo(document_.sourcePath, document_.parts.size());
     leftPanel_.setStats(0, 0.0);
     progressBar_.setValue(0.0);
-    toolbar_.setPhaseText(L"Imported");
+    toolbar_.setPhaseText(loc.text(TextId::ImportSuccess));
 }
 
 void MainWindow::applySettingsToDocument(const EngineSettings& settings) {
@@ -211,8 +247,9 @@ void MainWindow::applySettingsToDocument(const EngineSettings& settings) {
 }
 
 void MainWindow::startNesting() {
+    const auto& loc = Localization::instance();
     if (document_.parts.empty()) {
-        MessageBoxW(hwnd_, L"Once SVG, DXF veya PLT/HPGL dosyasi acin.", L"Baslat", MB_OK | MB_ICONINFORMATION);
+        MessageBoxW(hwnd_, loc.text(TextId::OpenFileFirst), loc.text(TextId::Start), MB_OK | MB_ICONINFORMATION);
         return;
     }
     if (engine_.isRunning()) {
@@ -223,7 +260,7 @@ void MainWindow::startNesting() {
     applySettingsToDocument(settings);
     canvas_.clearSnapshot();
     progressBar_.setValue(0.0);
-    toolbar_.setPhaseText(L"PrepareGeometry");
+    toolbar_.setPhaseText(loc.text(TextId::PrepareGeometry));
 
     engine_.setDocument(&document_);
     engine_.setSettings(settings);
@@ -232,13 +269,13 @@ void MainWindow::startNesting() {
 }
 
 void MainWindow::stopNesting() {
-    engine_.stop();
+    engine_.requestStop();
     updateSolverUi();
 }
 
 void MainWindow::updateSolverUi() {
     latestSnapshot_ = engine_.getLatestSnapshot();
-    if (latestSnapshot_.phaseName.empty()) {
+    if (latestSnapshot_.phase == SolverPhase::Idle && !latestSnapshot_.running && latestSnapshot_.currentPoses.empty() && latestSnapshot_.bestPoses.empty()) {
         return;
     }
 
@@ -253,10 +290,11 @@ void MainWindow::updateSolverUi() {
 }
 
 void MainWindow::exportCorelSession() {
+    const auto& loc = Localization::instance();
     const SolverResult result = engine_.getBestResult();
     const std::wstring session = corelBridge_.exportResultSession(document_, result);
     (void)session;
-    MessageBoxW(hwnd_, L"Corel export session modeli uretildi. Gercek Corel makro/pipe aktarimi sonraki entegrasyon adiminda baglanacak.", L"Corel'e Aktar", MB_OK | MB_ICONINFORMATION);
+    MessageBoxW(hwnd_, loc.text(TextId::CorelExportReady), loc.text(TextId::ExportToCorel), MB_OK | MB_ICONINFORMATION);
 }
 
 } // namespace nest

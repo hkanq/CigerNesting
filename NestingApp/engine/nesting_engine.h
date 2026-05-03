@@ -4,6 +4,7 @@
 #include "engine/engine_settings.h"
 #include "engine/solver_state.h"
 #include <atomic>
+#include <memory>
 #include <mutex>
 #include <thread>
 
@@ -21,6 +22,7 @@ public:
     void setSettings(const EngineSettings& settings);
 
     void start();
+    void requestStop();
     void stop();
     bool isRunning() const;
 
@@ -39,7 +41,7 @@ private:
     std::atomic_bool stopRequested_{false};
 
     mutable std::mutex snapshotMutex_;
-    SolverSnapshot latestSnapshot_;
+    std::shared_ptr<const SolverSnapshot> latestSnapshot_;
 
     mutable std::mutex resultMutex_;
     SolverResult bestResult_;

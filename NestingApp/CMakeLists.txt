@@ -10,6 +10,7 @@ file(GLOB_RECURSE CIGER_NESTING_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/import/*.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/engine/*.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/bridge/*.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/localization/*.cpp"
 )
 
 add_executable(CigerNesting WIN32 ${CIGER_NESTING_SOURCES})
@@ -20,7 +21,7 @@ target_compile_definitions(CigerNesting PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNI
 target_link_libraries(CigerNesting PRIVATE user32 gdi32 comdlg32 shell32)
 
 if(MSVC)
-    target_compile_options(CigerNesting PRIVATE /W4 /permissive- /EHsc)
+    target_compile_options(CigerNesting PRIVATE /W4 /permissive- /EHsc /utf-8)
 else()
     target_compile_options(CigerNesting PRIVATE -Wall -Wextra -Wpedantic)
 endif()

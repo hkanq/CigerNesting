@@ -3,19 +3,28 @@
 #include "engine/broadphase.h"
 #include "engine/compression.h"
 #include "engine/local_search.h"
-#include "engine/narrowphase.h"
+#include "engine/parallel_collision_evaluator.h"
 #include "engine/penalty_system.h"
 #include "engine/pose_sampler.h"
+#include "engine/worker_pool.h"
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
+#include <limits>
+#include <memory>
 #include <numeric>
-#include <thread>
 
 namespace nest {
 namespace {
 
 using Clock = std::chrono::steady_clock;
+
+struct PlacementChoice {
+    double angleRadians = 0.0;
+    bool mirrored = false;
+    AABB bounds;
+};
 
 double scoreArea(const Part& part) {
     return part.area > 0.0 ? part.area : part.localBounds.area();
@@ -25,10 +34,76 @@ double elapsedSecondsSince(Clock::time_point start) {
     return std::chrono::duration<double>(Clock::now() - start).count();
 }
 
-CollisionReport evaluateLayout(const Document& document, const std::vector<Pose>& poses, const EngineSettings& settings) {
+AABB orientedLocalBounds(const Part& part, double angleRadians, bool mirrored) {
+    if (!part.localBounds.isValid()) {
+        return {};
+    }
+
+    Pose pose;
+    pose.angleRadians = angleRadians;
+    pose.mirrored = mirrored;
+    const Transform transform = pose.toTransform();
+    const AABB& source = part.localBounds;
+    const std::array<Vec2, 4> corners{
+        Vec2{source.min.x, source.min.y},
+        Vec2{source.max.x, source.min.y},
+        Vec2{source.max.x, source.max.y},
+        Vec2{source.min.x, source.max.y}
+    };
+
+    AABB box;
+    for (const auto& corner : corners) {
+        box.include(transform.apply(corner));
+    }
+    return box;
+}
+
+PlacementChoice choosePlacementChoice(
+    const Part& part,
+    const std::vector<double>& rotationSamples,
+    const std::vector<bool>& mirrorSamples,
+    const EngineSettings& settings,
+    double rowX) {
+    PlacementChoice best;
+    double bestScore = std::numeric_limits<double>::max();
+    const double rightLimit = settings.sheetWidth - settings.margin;
+
+    for (const double angle : rotationSamples) {
+        for (const bool mirrored : mirrorSamples) {
+            const AABB bounds = orientedLocalBounds(part, angle, mirrored);
+            if (!bounds.isValid()) {
+                continue;
+            }
+            const double width = std::max(1.0, bounds.width());
+            const double height = std::max(1.0, bounds.height());
+            const bool fitsCurrentRow = rowX + width <= rightLimit + 1e-6;
+            const double fitPenalty = fitsCurrentRow ? 0.0 : 1000000.0;
+            const double score = fitPenalty + width + height * 0.05;
+            if (score < bestScore) {
+                bestScore = score;
+                best.angleRadians = angle;
+                best.mirrored = mirrored;
+                best.bounds = bounds;
+            }
+        }
+    }
+
+    if (!best.bounds.isValid()) {
+        best.bounds = part.localBounds;
+    }
+    return best;
+}
+
+CollisionReport evaluateLayout(
+    const Document& document,
+    const std::vector<Pose>& poses,
+    const EngineSettings& settings,
+    ParallelCollisionEvaluator& evaluator,
+    WorkerPool& workerPool,
+    size_t workerThreadCount) {
     BroadPhase broad;
-    NarrowPhase narrow;
-    return narrow.evaluate(document.parts, poses, broad.findCandidatePairs(document.parts, poses, settings.partSpacing), settings.collisionTolerance);
+    const auto pairs = broad.findCandidatePairs(document.parts, poses, settings.partSpacing);
+    return evaluator.evaluate(document.parts, poses, pairs, settings.collisionTolerance, workerPool, workerThreadCount);
 }
 
 double layoutUtilization(const Document& document, const std::vector<Pose>& poses, const EngineSettings& settings) {
@@ -85,6 +160,10 @@ void NestingEngine::start() {
     worker_ = std::thread([this]() { run(); });
 }
 
+void NestingEngine::requestStop() {
+    stopRequested_.store(true);
+}
+
 void NestingEngine::stop() {
     stopRequested_.store(true);
     if (worker_.joinable()) {
@@ -98,8 +177,12 @@ bool NestingEngine::isRunning() const {
 }
 
 SolverSnapshot NestingEngine::getLatestSnapshot() const {
-    std::lock_guard<std::mutex> lock(snapshotMutex_);
-    return latestSnapshot_;
+    std::shared_ptr<const SolverSnapshot> snapshot;
+    {
+        std::lock_guard<std::mutex> lock(snapshotMutex_);
+        snapshot = latestSnapshot_;
+    }
+    return snapshot ? *snapshot : SolverSnapshot{};
 }
 
 SolverResult NestingEngine::getBestResult() const {
@@ -108,16 +191,16 @@ SolverResult NestingEngine::getBestResult() const {
 }
 
 void NestingEngine::publishSnapshot(SolverPhase phase, double progress, const std::vector<Pose>& current, const std::vector<Pose>& best, size_t collisions, double overlap, double utilization, bool running, double elapsedSeconds) {
-    SolverSnapshot snapshot;
-    snapshot.currentPoses = current;
-    snapshot.bestPoses = best;
-    snapshot.phaseName = phaseName(phase);
-    snapshot.progress = std::max(0.0, std::min(1.0, progress));
-    snapshot.collisionCount = collisions;
-    snapshot.overlapScore = overlap;
-    snapshot.utilization = utilization;
-    snapshot.elapsedSeconds = elapsedSeconds;
-    snapshot.running = running;
+    auto snapshot = std::make_shared<SolverSnapshot>();
+    snapshot->currentPoses = current;
+    snapshot->bestPoses = best;
+    snapshot->phase = phase;
+    snapshot->progress = std::max(0.0, std::min(1.0, progress));
+    snapshot->collisionCount = collisions;
+    snapshot->overlapScore = overlap;
+    snapshot->utilization = utilization;
+    snapshot->elapsedSeconds = elapsedSeconds;
+    snapshot->running = running;
 
     std::lock_guard<std::mutex> lock(snapshotMutex_);
     latestSnapshot_ = std::move(snapshot);
@@ -131,17 +214,36 @@ void NestingEngine::run() {
     std::vector<Pose> bestPoses;
     PenaltySystem penalties;
 
-    auto finishStopped = [&]() {
-        const auto report = doc ? evaluateLayout(*doc, poses, settings) : CollisionReport{};
-        publishSnapshot(SolverPhase::Stopped, 1.0, poses, bestPoses, report.collisionCount, report.overlapScore, doc ? layoutUtilization(*doc, poses, settings) : 0.0, false, elapsedSecondsSince(started));
-        running_.store(false);
-    };
-
     if (doc == nullptr || doc->parts.empty()) {
         publishSnapshot(SolverPhase::Done, 1.0, poses, bestPoses, 0, 0.0, 0.0, false, elapsedSecondsSince(started));
         running_.store(false);
         return;
     }
+
+    const size_t workerThreadCount = ParallelCollisionEvaluator::resolveThreadCount(settings);
+    WorkerPool workerPool(workerThreadCount);
+    ParallelCollisionEvaluator collisionEvaluator;
+    const auto snapshotInterval = std::chrono::milliseconds(std::max(16, settings.livePreviewIntervalMs));
+    auto lastSnapshotTime = Clock::now() - snapshotInterval;
+
+    auto evaluateCurrent = [&]() {
+        return evaluateLayout(*doc, poses, settings, collisionEvaluator, workerPool, workerThreadCount);
+    };
+
+    auto publishIfDue = [&](SolverPhase phase, double progress, const CollisionReport& report, bool force) {
+        const auto now = Clock::now();
+        if (!force && now - lastSnapshotTime < snapshotInterval) {
+            return;
+        }
+        lastSnapshotTime = now;
+        publishSnapshot(phase, progress, poses, bestPoses, report.collisionCount, report.overlapScore, layoutUtilization(*doc, poses, settings), true, elapsedSecondsSince(started));
+    };
+
+    auto finishStopped = [&]() {
+        const auto report = evaluateCurrent();
+        publishSnapshot(SolverPhase::Stopped, 1.0, poses, bestPoses, report.collisionCount, report.overlapScore, layoutUtilization(*doc, poses, settings), false, elapsedSecondsSince(started));
+        running_.store(false);
+    };
 
     const size_t n = doc->parts.size();
     poses.resize(n);
@@ -151,8 +253,7 @@ void NestingEngine::run() {
         bestPoses[i] = poses[i];
     }
 
-    publishSnapshot(SolverPhase::PrepareGeometry, 0.02, poses, bestPoses, 0, 0.0, 0.0, true, elapsedSecondsSince(started));
-    std::this_thread::sleep_for(std::chrono::milliseconds(40));
+    publishIfDue(SolverPhase::PrepareGeometry, 0.02, CollisionReport{}, true);
     if (stopRequested_.load()) {
         finishStopped();
         return;
@@ -166,7 +267,7 @@ void NestingEngine::run() {
 
     PoseSampler sampler;
     const auto rotations = sampler.coarseRotationSamples(settings);
-    (void)rotations;
+    const auto mirrors = sampler.mirrorSamples(settings);
 
     double x = settings.margin;
     double y = settings.margin;
@@ -179,34 +280,37 @@ void NestingEngine::run() {
         }
         const size_t idx = order[placed];
         const Part& part = doc->parts[idx];
-        const AABB bounds = part.localBounds;
-        const double width = std::max(1.0, bounds.width());
-        const double height = std::max(1.0, bounds.height());
+
+        PlacementChoice choice = choosePlacementChoice(part, rotations, mirrors, settings, x);
+        double width = std::max(1.0, choice.bounds.width());
+        double height = std::max(1.0, choice.bounds.height());
 
         if (x + width > settings.sheetWidth - settings.margin && x > settings.margin) {
             x = settings.margin;
             y += rowHeight + settings.partSpacing;
             rowHeight = 0.0;
+            choice = choosePlacementChoice(part, rotations, mirrors, settings, x);
+            width = std::max(1.0, choice.bounds.width());
+            height = std::max(1.0, choice.bounds.height());
         }
 
         Pose pose;
-        pose.x = x - bounds.min.x;
-        pose.y = y - bounds.min.y;
-        pose.angleRadians = 0.0;
-        pose.mirrored = false;
+        pose.x = x - choice.bounds.min.x;
+        pose.y = y - choice.bounds.min.y;
+        pose.angleRadians = choice.angleRadians;
+        pose.mirrored = choice.mirrored;
         poses[idx] = pose;
         bestPoses = poses;
 
         x += width + settings.partSpacing;
         rowHeight = std::max(rowHeight, height);
 
-        const auto report = evaluateLayout(*doc, poses, settings);
-        publishSnapshot(SolverPhase::InitialPlacement, 0.05 + 0.35 * (static_cast<double>(placed + 1) / static_cast<double>(order.size())), poses, bestPoses, report.collisionCount, report.overlapScore, layoutUtilization(*doc, poses, settings), true, elapsedSecondsSince(started));
-        std::this_thread::sleep_for(std::chrono::milliseconds(std::max(10, settings.livePreviewIntervalMs)));
+        const auto report = evaluateCurrent();
+        const double progress = 0.05 + 0.35 * (static_cast<double>(placed + 1) / static_cast<double>(order.size()));
+        publishIfDue(SolverPhase::InitialPlacement, progress, report, placed + 1 == order.size());
     }
 
-    publishSnapshot(SolverPhase::Exploration, 0.45, poses, bestPoses, 0, 0.0, layoutUtilization(*doc, poses, settings), true, elapsedSecondsSince(started));
-    std::this_thread::sleep_for(std::chrono::milliseconds(70));
+    publishIfDue(SolverPhase::Exploration, 0.45, evaluateCurrent(), true);
     if (stopRequested_.load()) {
         finishStopped();
         return;
@@ -215,15 +319,14 @@ void NestingEngine::run() {
     LocalSearch localSearch;
     for (int i = 0; i < 4; ++i) {
         localSearch.resolveSimpleCollisions(*doc, settings, poses);
-        const auto report = evaluateLayout(*doc, poses, settings);
+        const auto report = evaluateCurrent();
         for (const auto& pair : report.pairs) {
             penalties.observeCollision(pair.a, pair.b);
         }
-        publishSnapshot(SolverPhase::CollisionResolution, 0.50 + 0.10 * static_cast<double>(i + 1), poses, poses, report.collisionCount, report.overlapScore, layoutUtilization(*doc, poses, settings), true, elapsedSecondsSince(started));
+        publishIfDue(SolverPhase::CollisionResolution, 0.50 + 0.10 * static_cast<double>(i + 1), report, report.collisionCount == 0 || i == 3);
         if (report.collisionCount == 0 || stopRequested_.load()) {
             break;
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(40));
     }
     if (stopRequested_.load()) {
         finishStopped();
@@ -232,24 +335,25 @@ void NestingEngine::run() {
 
     Compression compression;
     compression.compressLeftUp(*doc, settings, poses);
-    auto report = evaluateLayout(*doc, poses, settings);
+    auto report = evaluateCurrent();
     bestPoses = poses;
-    publishSnapshot(SolverPhase::Compression, 0.76, poses, bestPoses, report.collisionCount, report.overlapScore, layoutUtilization(*doc, poses, settings), true, elapsedSecondsSince(started));
-    std::this_thread::sleep_for(std::chrono::milliseconds(60));
+    publishIfDue(SolverPhase::Compression, 0.76, report, true);
     if (stopRequested_.load()) {
         finishStopped();
         return;
     }
 
     // 0.001 degree precision belongs to this local refinement stage, not to brute-force angle scanning.
-    publishSnapshot(SolverPhase::UltraRefinement, 0.90, poses, bestPoses, report.collisionCount, report.overlapScore, layoutUtilization(*doc, poses, settings), true, elapsedSecondsSince(started));
-    std::this_thread::sleep_for(std::chrono::milliseconds(60));
+    publishIfDue(SolverPhase::UltraRefinement, 0.90, report, true);
+    if (stopRequested_.load()) {
+        finishStopped();
+        return;
+    }
 
-    report = evaluateLayout(*doc, poses, settings);
+    report = evaluateCurrent();
+    publishIfDue(SolverPhase::FinalValidation, 0.97, report, true);
+
     const double utilization = layoutUtilization(*doc, poses, settings);
-    publishSnapshot(SolverPhase::FinalValidation, 0.97, poses, bestPoses, report.collisionCount, report.overlapScore, utilization, true, elapsedSecondsSince(started));
-    std::this_thread::sleep_for(std::chrono::milliseconds(40));
-
     {
         std::lock_guard<std::mutex> lock(resultMutex_);
         bestResult_.bestPoses = bestPoses;

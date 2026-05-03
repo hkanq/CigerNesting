@@ -1,5 +1,6 @@
 #include "ui/left_panel.h"
 
+#include "localization/localization.h"
 #include <sstream>
 
 namespace nest {
@@ -42,7 +43,11 @@ void LeftPanel::move(const RECT& rect) {
 }
 
 void LeftPanel::setFileInfo(const std::wstring& path, size_t partCount) {
-    path_ = path.empty() ? L"No file loaded" : basenameOf(path);
+    if (path.empty()) {
+        path_ = Localization::instance().text(TextId::NoFileLoaded);
+    } else {
+        path_ = basenameOf(path);
+    }
     partCount_ = partCount;
     if (hwnd_) {
         InvalidateRect(hwnd_, nullptr, FALSE);
@@ -89,18 +94,21 @@ void LeftPanel::paint() {
     SetTextColor(hdc, RGB(35, 45, 55));
 
     RECT text{16, 18, rc.right - 12, rc.bottom - 12};
-    DrawTextW(hdc, L"Dosya Paneli", -1, &text, DT_LEFT | DT_TOP | DT_SINGLELINE);
+    const auto& loc = Localization::instance();
+    DrawTextW(hdc, loc.text(TextId::FilePanel), -1, &text, DT_LEFT | DT_TOP | DT_SINGLELINE);
     text.top += 34;
     DrawTextW(hdc, path_.c_str(), -1, &text, DT_LEFT | DT_TOP | DT_WORDBREAK);
 
     std::wostringstream stats;
-    stats << L"\nParca sayisi: " << partCount_ << L"\nCarpisma: " << collisionCount_ << L"\nDoluluk: " << static_cast<int>(utilization_ * 100.0) << L"%";
+    stats << L"\n" << loc.text(TextId::PartCount) << L": " << partCount_
+          << L"\n" << loc.text(TextId::Collision) << L": " << collisionCount_
+          << L"\n" << loc.text(TextId::Utilization) << L": " << static_cast<int>(utilization_ * 100.0) << L"%";
     text.top += 54;
     DrawTextW(hdc, stats.str().c_str(), -1, &text, DT_LEFT | DT_TOP | DT_WORDBREAK);
 
     RECT hint{16, rc.bottom - 86, rc.right - 14, rc.bottom - 12};
     SetTextColor(hdc, RGB(94, 105, 116));
-    DrawTextW(hdc, L"SVG, PLT/HPGL veya DXF acin. Mouse tekerlegi zoom, sol surukleme pan.", -1, &hint, DT_LEFT | DT_TOP | DT_WORDBREAK);
+    DrawTextW(hdc, loc.text(TextId::OpenFileHint), -1, &hint, DT_LEFT | DT_TOP | DT_WORDBREAK);
 
     HPEN line = CreatePen(PS_SOLID, 1, RGB(218, 222, 210));
     HGDIOBJ oldPen = SelectObject(hdc, line);

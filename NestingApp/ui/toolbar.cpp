@@ -1,5 +1,6 @@
 #include "ui/toolbar.h"
 
+#include "localization/localization.h"
 #include "ui/control_ids.h"
 #include <array>
 
@@ -37,12 +38,13 @@ bool Toolbar::create(HWND parent, HINSTANCE instance) {
 }
 
 void Toolbar::createControls(HINSTANCE instance) {
-    openButton_ = CreateWindowW(L"BUTTON", L"Dosya Ac", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 0, 0, 90, 28, hwnd_, reinterpret_cast<HMENU>(uiid::buttonOpen), instance, nullptr);
-    saveButton_ = CreateWindowW(L"BUTTON", L"Kaydet", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 0, 0, 70, 28, hwnd_, reinterpret_cast<HMENU>(uiid::buttonSave), instance, nullptr);
-    startButton_ = CreateWindowW(L"BUTTON", L"Baslat", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 0, 0, 70, 28, hwnd_, reinterpret_cast<HMENU>(uiid::buttonStart), instance, nullptr);
-    stopButton_ = CreateWindowW(L"BUTTON", L"Durdur", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 0, 0, 70, 28, hwnd_, reinterpret_cast<HMENU>(uiid::buttonStop), instance, nullptr);
-    corelButton_ = CreateWindowW(L"BUTTON", L"Corel Baglantisi", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 0, 0, 130, 28, hwnd_, reinterpret_cast<HMENU>(uiid::buttonCorelConnect), instance, nullptr);
-    phaseLabel_ = CreateWindowW(L"STATIC", L"Idle", WS_CHILD | WS_VISIBLE | SS_LEFT, 0, 0, 200, 22, hwnd_, nullptr, instance, nullptr);
+    const auto& loc = Localization::instance();
+    openButton_ = CreateWindowW(L"BUTTON", loc.text(TextId::FileOpen), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 0, 0, 90, 28, hwnd_, reinterpret_cast<HMENU>(uiid::buttonOpen), instance, nullptr);
+    saveButton_ = CreateWindowW(L"BUTTON", loc.text(TextId::Save), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 0, 0, 70, 28, hwnd_, reinterpret_cast<HMENU>(uiid::buttonSave), instance, nullptr);
+    startButton_ = CreateWindowW(L"BUTTON", loc.text(TextId::Start), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 0, 0, 70, 28, hwnd_, reinterpret_cast<HMENU>(uiid::buttonStart), instance, nullptr);
+    stopButton_ = CreateWindowW(L"BUTTON", loc.text(TextId::Stop), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 0, 0, 70, 28, hwnd_, reinterpret_cast<HMENU>(uiid::buttonStop), instance, nullptr);
+    corelButton_ = CreateWindowW(L"BUTTON", loc.text(TextId::CorelConnection), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 0, 0, 130, 28, hwnd_, reinterpret_cast<HMENU>(uiid::buttonCorelConnect), instance, nullptr);
+    phaseLabel_ = CreateWindowW(L"STATIC", loc.text(TextId::Idle), WS_CHILD | WS_VISIBLE | SS_LEFT, 0, 0, 200, 22, hwnd_, nullptr, instance, nullptr);
     layoutControls();
 }
 
@@ -68,7 +70,7 @@ void Toolbar::layoutControls() {
     int x = 12;
     const int y = 13;
     const std::array<HWND, 5> buttons{openButton_, saveButton_, startButton_, stopButton_, corelButton_};
-    const std::array<int, 5> widths{92, 72, 72, 76, 136};
+    const std::array<int, 5> widths{104, 82, 82, 82, 158};
     for (size_t i = 0; i < buttons.size(); ++i) {
         if (buttons[i]) {
             MoveWindow(buttons[i], x, y, widths[i], 28, TRUE);

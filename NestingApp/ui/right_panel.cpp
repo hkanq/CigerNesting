@@ -1,5 +1,6 @@
 #include "ui/right_panel.h"
 
+#include "localization/localization.h"
 #include "ui/control_ids.h"
 #include <cwchar>
 #include <cstdlib>
@@ -26,7 +27,7 @@ void registerRightPanelClass(HINSTANCE instance) {
 }
 
 HWND createLabel(HWND parent, HINSTANCE instance, const wchar_t* text) {
-    return CreateWindowW(L"STATIC", text, WS_CHILD | WS_VISIBLE | SS_LEFT, 0, 0, 120, 20, parent, nullptr, instance, nullptr);
+    return CreateWindowW(L"STATIC", text, WS_CHILD | WS_VISIBLE | SS_LEFT, 0, 0, 160, 20, parent, nullptr, instance, nullptr);
 }
 
 HWND createEdit(HWND parent, HINSTANCE instance, int id, const wchar_t* text) {
@@ -47,47 +48,48 @@ bool RightPanel::create(HWND parent, HINSTANCE instance) {
 }
 
 void RightPanel::createControls(HINSTANCE instance) {
-    createLabel(hwnd_, instance, L"Sac genisligi");
+    const auto& loc = Localization::instance();
+    createLabel(hwnd_, instance, loc.text(TextId::SheetWidth));
     sheetWidthEdit_ = createEdit(hwnd_, instance, uiid::editSheetWidth, L"1000");
-    createLabel(hwnd_, instance, L"Sac yuksekligi");
+    createLabel(hwnd_, instance, loc.text(TextId::SheetHeight));
     sheetHeightEdit_ = createEdit(hwnd_, instance, uiid::editSheetHeight, L"600");
-    createLabel(hwnd_, instance, L"Parca araligi");
+    createLabel(hwnd_, instance, loc.text(TextId::PartSpacing));
     spacingEdit_ = createEdit(hwnd_, instance, uiid::editSpacing, L"5");
-    createLabel(hwnd_, instance, L"Kenar boslugu");
+    createLabel(hwnd_, instance, loc.text(TextId::Margin));
     marginEdit_ = createEdit(hwnd_, instance, uiid::editMargin, L"10");
 
-    rotationCheck_ = CreateWindowW(L"BUTTON", L"Rotasyon acik", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, 0, 0, 140, 22, hwnd_, reinterpret_cast<HMENU>(uiid::checkRotation), instance, nullptr);
+    rotationCheck_ = CreateWindowW(L"BUTTON", loc.text(TextId::RotationEnabled), WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, 0, 0, 140, 22, hwnd_, reinterpret_cast<HMENU>(uiid::checkRotation), instance, nullptr);
     SendMessageW(rotationCheck_, BM_SETCHECK, BST_CHECKED, 0);
 
-    createLabel(hwnd_, instance, L"Rotasyon modu");
+    createLabel(hwnd_, instance, loc.text(TextId::RotationMode));
     rotationModeCombo_ = CreateWindowW(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST, 0, 0, 150, 160, hwnd_, reinterpret_cast<HMENU>(uiid::comboRotationMode), instance, nullptr);
-    SendMessageW(rotationModeCombo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"None"));
-    SendMessageW(rotationModeCombo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"RightAngles"));
-    SendMessageW(rotationModeCombo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"FortyFive"));
-    SendMessageW(rotationModeCombo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"FixedStep"));
-    SendMessageW(rotationModeCombo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Continuous"));
+    SendMessageW(rotationModeCombo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(loc.text(TextId::None)));
+    SendMessageW(rotationModeCombo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(loc.text(TextId::RightAngles)));
+    SendMessageW(rotationModeCombo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(loc.text(TextId::FortyFiveDegrees)));
+    SendMessageW(rotationModeCombo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(loc.text(TextId::FixedStep)));
+    SendMessageW(rotationModeCombo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(loc.text(TextId::ContinuousRefine)));
     SendMessageW(rotationModeCombo_, CB_SETCURSEL, 1, 0);
 
-    createLabel(hwnd_, instance, L"Aci hassasiyeti");
+    createLabel(hwnd_, instance, loc.text(TextId::AnglePrecision));
     angleStepEdit_ = createEdit(hwnd_, instance, uiid::editAngleStep, L"1.0");
 
-    mirrorCheck_ = CreateWindowW(L"BUTTON", L"Aynalama acik", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, 0, 0, 150, 22, hwnd_, reinterpret_cast<HMENU>(uiid::checkMirroring), instance, nullptr);
+    mirrorCheck_ = CreateWindowW(L"BUTTON", loc.text(TextId::MirroringEnabled), WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, 0, 0, 150, 22, hwnd_, reinterpret_cast<HMENU>(uiid::checkMirroring), instance, nullptr);
 
-    createLabel(hwnd_, instance, L"Kalite modu");
+    createLabel(hwnd_, instance, loc.text(TextId::QualityMode));
     qualityCombo_ = CreateWindowW(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST, 0, 0, 150, 140, hwnd_, reinterpret_cast<HMENU>(uiid::comboQuality), instance, nullptr);
-    SendMessageW(qualityCombo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Fast"));
-    SendMessageW(qualityCombo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Balanced"));
-    SendMessageW(qualityCombo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"MaxQuality"));
+    SendMessageW(qualityCombo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(loc.text(TextId::Fast)));
+    SendMessageW(qualityCombo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(loc.text(TextId::Balanced)));
+    SendMessageW(qualityCombo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(loc.text(TextId::MaxQuality)));
     SendMessageW(qualityCombo_, CB_SETCURSEL, 1, 0);
 
-    createLabel(hwnd_, instance, L"Sure limiti sn");
+    createLabel(hwnd_, instance, loc.text(TextId::TimeLimitSeconds));
     timeLimitEdit_ = createEdit(hwnd_, instance, uiid::editTimeLimit, L"30");
-    createLabel(hwnd_, instance, L"Thread sayisi");
-    threadEdit_ = createEdit(hwnd_, instance, uiid::editThreads, L"1");
+    createLabel(hwnd_, instance, loc.text(TextId::ThreadCount));
+    threadEdit_ = createEdit(hwnd_, instance, uiid::editThreads, L"0");
 
-    startButton_ = CreateWindowW(L"BUTTON", L"Baslat", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 0, 0, 100, 30, hwnd_, reinterpret_cast<HMENU>(uiid::buttonStart), instance, nullptr);
-    stopButton_ = CreateWindowW(L"BUTTON", L"Durdur", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 0, 0, 100, 30, hwnd_, reinterpret_cast<HMENU>(uiid::buttonStop), instance, nullptr);
-    corelExportButton_ = CreateWindowW(L"BUTTON", L"Corel'e Aktar", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 0, 0, 220, 30, hwnd_, reinterpret_cast<HMENU>(uiid::buttonCorelExport), instance, nullptr);
+    startButton_ = CreateWindowW(L"BUTTON", loc.text(TextId::Start), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 0, 0, 100, 30, hwnd_, reinterpret_cast<HMENU>(uiid::buttonStart), instance, nullptr);
+    stopButton_ = CreateWindowW(L"BUTTON", loc.text(TextId::Stop), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 0, 0, 100, 30, hwnd_, reinterpret_cast<HMENU>(uiid::buttonStop), instance, nullptr);
+    corelExportButton_ = CreateWindowW(L"BUTTON", loc.text(TextId::ExportToCorel), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 0, 0, 220, 30, hwnd_, reinterpret_cast<HMENU>(uiid::buttonCorelExport), instance, nullptr);
 
     layoutControls();
 }
@@ -104,9 +106,9 @@ void RightPanel::layoutControls() {
         return;
     }
     const int labelX = 18;
-    const int editX = 160;
+    const int editX = 190;
     const int row = 34;
-    const int editW = 110;
+    const int editW = 80;
 
     const int labelYs[] = {52, 86, 120, 154, 222, 256, 324, 358, 392};
     int labelIndex = 0;
@@ -117,7 +119,7 @@ void RightPanel::layoutControls() {
         GetClassNameW(child, className, 32);
         const bool isStatic = wcscmp(className, L"Static") == 0;
         if (isStatic && labelIndex < static_cast<int>(sizeof(labelYs) / sizeof(labelYs[0]))) {
-            MoveWindow(child, labelX, labelYs[labelIndex++], 130, 22, TRUE);
+            MoveWindow(child, labelX, labelYs[labelIndex++], 166, 22, TRUE);
         }
         child = next;
     }
@@ -131,13 +133,13 @@ void RightPanel::layoutControls() {
 
     MoveWindow(rotationCheck_, labelX, y + 4, 150, 22, TRUE);
     y += row;
-    MoveWindow(rotationModeCombo_, editX - 18, y, 128, 120, TRUE);
+    MoveWindow(rotationModeCombo_, editX - 28, y, 108, 120, TRUE);
     y += row;
     MoveWindow(angleStepEdit_, editX, y, editW, 24, TRUE);
     y += row;
     MoveWindow(mirrorCheck_, labelX, y + 4, 150, 22, TRUE);
     y += row;
-    MoveWindow(qualityCombo_, editX - 18, y, 128, 100, TRUE);
+    MoveWindow(qualityCombo_, editX - 28, y, 108, 100, TRUE);
     y += row;
     MoveWindow(timeLimitEdit_, editX, y, editW, 24, TRUE);
     y += row;
@@ -159,7 +161,7 @@ EngineSettings RightPanel::getSettings() const {
     settings.rotationStepDegrees = readDouble(angleStepEdit_, 1.0);
     settings.allowMirroring = SendMessageW(mirrorCheck_, BM_GETCHECK, 0, 0) == BST_CHECKED;
     settings.timeLimitSeconds = readDouble(timeLimitEdit_, 30.0);
-    settings.cpuThreadCount = readInt(threadEdit_, 1);
+    settings.cpuThreadCount = readInt(threadEdit_, 0);
 
     const LRESULT mode = SendMessageW(rotationModeCombo_, CB_GETCURSEL, 0, 0);
     switch (mode) {
@@ -238,7 +240,7 @@ void RightPanel::paint() {
     SetBkMode(hdc, TRANSPARENT);
     SetTextColor(hdc, RGB(35, 45, 55));
     RECT title{18, 18, rc.right - 18, 40};
-    DrawTextW(hdc, L"Nesting Ayarlari", -1, &title, DT_LEFT | DT_TOP | DT_SINGLELINE);
+    DrawTextW(hdc, Localization::instance().text(TextId::NestingSettings), -1, &title, DT_LEFT | DT_TOP | DT_SINGLELINE);
 
     HPEN line = CreatePen(PS_SOLID, 1, RGB(216, 220, 210));
     HGDIOBJ oldPen = SelectObject(hdc, line);

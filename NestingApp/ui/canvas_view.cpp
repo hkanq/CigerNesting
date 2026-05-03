@@ -1,6 +1,7 @@
 #include "ui/canvas_view.h"
 
 #include "core/math_utils.h"
+#include "localization/localization.h"
 #include "render/gdi_renderer.h"
 #include <windowsx.h>
 #include <algorithm>
@@ -33,6 +34,22 @@ Color partFill(size_t index) {
         {176, 154, 78, 70}, {138, 120, 168, 70}, {90, 160, 104, 70}
     };
     return palette[index % (sizeof(palette) / sizeof(palette[0]))];
+}
+
+TextId textIdForPhase(SolverPhase phase) {
+    switch (phase) {
+    case SolverPhase::Idle: return TextId::Idle;
+    case SolverPhase::PrepareGeometry: return TextId::PrepareGeometry;
+    case SolverPhase::InitialPlacement: return TextId::InitialPlacement;
+    case SolverPhase::Exploration: return TextId::Exploration;
+    case SolverPhase::CollisionResolution: return TextId::CollisionResolution;
+    case SolverPhase::Compression: return TextId::Compression;
+    case SolverPhase::UltraRefinement: return TextId::UltraRefinement;
+    case SolverPhase::FinalValidation: return TextId::FinalValidation;
+    case SolverPhase::Done: return TextId::Done;
+    case SolverPhase::Stopped: return TextId::Stopped;
+    }
+    return TextId::Idle;
 }
 
 } // namespace
@@ -185,7 +202,7 @@ void CanvasView::drawGrid(IRenderer& renderer, int width, int height) {
 
 void CanvasView::drawDocument(IRenderer& renderer) {
     if (!document_) {
-        renderer.drawText({24, 24}, L"Dosya acarak baslayin", {70, 82, 92, 255});
+        renderer.drawText({24, 24}, Localization::instance().text(TextId::PreviewPrompt), {70, 82, 92, 255});
         return;
     }
 
@@ -220,10 +237,11 @@ void CanvasView::drawDocument(IRenderer& renderer) {
     }
 
     if (hasSnapshot_) {
+        const auto& loc = Localization::instance();
         std::wostringstream overlay;
-        overlay << L"Faz: " << std::wstring(snapshot_.phaseName.begin(), snapshot_.phaseName.end())
-                << L"  |  Carpisma: " << snapshot_.collisionCount
-                << L"  |  Doluluk: " << static_cast<int>(snapshot_.utilization * 100.0) << L"%";
+        overlay << loc.text(TextId::Phase) << L": " << loc.text(textIdForPhase(snapshot_.phase))
+                << L"  |  " << loc.text(TextId::Collision) << L": " << snapshot_.collisionCount
+                << L"  |  " << loc.text(TextId::Utilization) << L": " << static_cast<int>(snapshot_.utilization * 100.0) << L"%";
         renderer.drawText({18, 18}, overlay.str(), {40, 52, 60, 255});
     }
 }

@@ -16,9 +16,8 @@ std::vector<double> PoseSampler::coarseRotationSamples(const EngineSettings& set
         step = 45.0;
     } else if (settings.rotationMode == RotationMode::FixedStep) {
         step = std::max(0.001, settings.rotationStepDegrees);
-        step = std::max(step, 5.0); // FixedStep enters fine values later; coarse pass stays bounded.
     } else if (settings.rotationMode == RotationMode::ContinuousRefine) {
-        step = 30.0;
+        step = 90.0;
     }
 
     std::vector<double> samples;

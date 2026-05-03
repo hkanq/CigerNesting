@@ -26,7 +26,7 @@ private:
     void paint();
 
     HWND hwnd_ = nullptr;
-    std::wstring path_ = L"No file loaded";
+    std::wstring path_;
     size_t partCount_ = 0;
     size_t collisionCount_ = 0;
     double utilization_ = 0.0;
