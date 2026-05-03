@@ -89,23 +89,52 @@ std::vector<Pose> PoseSampler::moveCandidates(const Document& document, const En
         candidates.push_back(pose);
     }
 
+    auto addBoundsContactCandidates = [&](const AABB& target, double clearance) {
+        if (!target.isValid()) {
+            return;
+        }
+        const Vec2 contactSnaps[] = {
+            {target.max.x + clearance - currentBounds.min.x, 0.0},
+            {target.min.x - clearance - currentBounds.max.x, 0.0},
+            {0.0, target.max.y + clearance - currentBounds.min.y},
+            {0.0, target.min.y - clearance - currentBounds.max.y},
+            {target.min.x - currentBounds.min.x, target.min.y - currentBounds.min.y},
+            {target.max.x - currentBounds.max.x, target.max.y - currentBounds.max.y}
+        };
+        for (const Vec2& delta : contactSnaps) {
+            Pose pose = base;
+            pose.x += delta.x;
+            pose.y += delta.y;
+            candidates.push_back(pose);
+        }
+    };
+
     for (size_t i = 0; i < document.parts.size() && i < poses.size(); ++i) {
         if (i == partIndex) {
             continue;
         }
         const AABB other = transformedBounds(document.parts[i], poses[i]);
-        const double gap = settings.partSpacing;
-        const Vec2 edgeSnaps[] = {
-            {other.max.x + gap - currentBounds.min.x, 0.0},
-            {other.min.x - gap - currentBounds.max.x, 0.0},
-            {0.0, other.max.y + gap - currentBounds.min.y},
-            {0.0, other.min.y - gap - currentBounds.max.y}
+        addBoundsContactCandidates(other, settings.partSpacing);
+    }
+
+    addBoundsContactCandidates(AABB::fromMinMax(
+        {document.sheet.origin.x + settings.margin, document.sheet.origin.y + settings.margin},
+        {document.sheet.origin.x + document.sheet.width - settings.margin, document.sheet.origin.y + document.sheet.height - settings.margin}), 0.0);
+
+    if (document.sheet.hasCustomProfile()) {
+        auto ringBounds = [](const Ring& ring) {
+            AABB box;
+            for (const Vec2& point : ring.points) {
+                box.include(point);
+            }
+            return box;
         };
-        for (const Vec2& delta : edgeSnaps) {
-            Pose pose = base;
-            pose.x += delta.x;
-            pose.y += delta.y;
-            candidates.push_back(pose);
+        addBoundsContactCandidates(ringBounds(document.sheet.profile().outerContour), 0.0);
+        for (const Ring& hole : document.sheet.profile().holes) {
+            addBoundsContactCandidates(ringBounds(hole), settings.partSpacing);
+        }
+        for (const Ring& zone : document.sheet.profile().forbiddenZones) {
+            addBoundsContactCandidates(ringBounds(zone), settings.partSpacing);
         }
     }
 

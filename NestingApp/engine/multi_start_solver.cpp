@@ -9,9 +9,11 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <future>
 #include <limits>
 #include <numeric>
 #include <random>
+#include <thread>
 
 namespace nest {
 namespace {
@@ -160,6 +162,13 @@ double elapsedSeconds(Clock::time_point started) {
     return std::chrono::duration<double>(Clock::now() - started).count();
 }
 
+struct AttemptResult {
+    LayoutState state;
+    int attempt = 0;
+    PlacementStrategy strategy = PlacementStrategy::BottomLeft;
+    unsigned int seed = 0;
+};
+
 } // namespace
 
 std::vector<PlacementStrategy> MultiStartSolver::strategySchedule(PlacementStrategy preferred) const {
@@ -293,11 +302,7 @@ LayoutState MultiStartSolver::solve(
     const std::atomic_bool& stopRequested,
     SolverProgressCallback callback) const {
     const auto started = Clock::now();
-    LayoutScore scorer;
-    PenaltySystem penalties;
-    OverlapResolver resolver;
-    Compression compression;
-    WorkerPool workerPool(ParallelCollisionEvaluator::resolveThreadCount(settings));
+    PenaltySystem globalPenalty;
 
     LayoutState best = rowBaseline(document, settings, settings.placementStrategy, 1u, 0);
     LayoutState current = best;
@@ -307,38 +312,73 @@ LayoutState MultiStartSolver::solve(
 
     const auto strategies = strategySchedule(settings.placementStrategy);
     const double limit = std::max(0.25, settings.timeLimitSeconds);
-    int attempt = 0;
+    const size_t attemptThreads = std::max<size_t>(1, ParallelCollisionEvaluator::resolveThreadCount(settings));
+    WorkerPool attemptPool(attemptThreads);
+    std::vector<std::future<AttemptResult>> futures;
+    int nextAttempt = 0;
 
-    while (!stopRequested.load() && elapsedSeconds(started) < limit) {
+    auto launchAttempt = [&](int attempt) {
         const PlacementStrategy strategy = strategies[static_cast<size_t>(attempt) % strategies.size()];
         const int orderMode = attempt % 4;
         const unsigned int seed = static_cast<unsigned int>(attempt + 1) * 2654435761u;
+        const PenaltySystem globalSnapshot = globalPenalty;
+        futures.push_back(attemptPool.enqueue([&, strategy, orderMode, seed, attempt, globalSnapshot]() {
+            PenaltySystem attemptPenalty;
+            OverlapResolver resolver;
+            Compression compression;
+            LayoutScore localScorer;
+            const size_t candidateThreads = std::max<size_t>(1, ParallelCollisionEvaluator::resolveThreadCount(settings) / std::max<size_t>(1, attemptThreads));
+            WorkerPool candidatePool(candidateThreads);
 
-        current = rowBaseline(document, settings, strategy, seed, orderMode);
-        if (callback) {
-            callback({SolverPhase::Exploration, std::min(0.45, 0.15 + elapsedSeconds(started) / limit * 0.25), current, best, elapsedSeconds(started)});
-        }
+            LayoutState state = rowBaseline(document, settings, strategy, seed, orderMode);
+            state = resolver.resolve(document, settings, std::move(state), attemptPenalty, candidatePool, stopRequested, seed);
+            if (state.collisionCount == 0 && state.invalidPartCount == 0 && !stopRequested.load()) {
+                state = compression.compressByScore(document, settings, std::move(state), attemptPenalty);
+            }
+            state = localScorer.evaluate(document, settings, state.poses, &attemptPenalty, &globalSnapshot, 0.10);
+            return AttemptResult{std::move(state), attempt, strategy, seed};
+        }));
+    };
 
-        current = resolver.resolve(document, settings, std::move(current), penalties, workerPool, stopRequested, seed);
-        if (callback) {
-            callback({SolverPhase::CollisionResolution, std::min(0.70, 0.40 + elapsedSeconds(started) / limit * 0.25), current, best, elapsedSeconds(started)});
-        }
+    while (!stopRequested.load() && futures.size() < attemptThreads && elapsedSeconds(started) < limit) {
+        launchAttempt(nextAttempt++);
+    }
 
-        if (current.collisionCount == 0 && current.invalidPartCount == 0) {
-            current = compression.compressByScore(document, settings, std::move(current), penalties);
-            if (callback) {
-                callback({SolverPhase::Compression, std::min(0.84, 0.65 + elapsedSeconds(started) / limit * 0.15), current, best, elapsedSeconds(started)});
+    while (!futures.empty() && !stopRequested.load()) {
+        bool completedAny = false;
+        for (auto it = futures.begin(); it != futures.end();) {
+            if (it->wait_for(std::chrono::milliseconds(0)) == std::future_status::ready) {
+                AttemptResult result = it->get();
+                it = futures.erase(it);
+                completedAny = true;
+                current = result.state;
+
+                for (const CollisionPair& pair : current.collisionPairs) {
+                    globalPenalty.observeCollision(pair.a, pair.b);
+                }
+
+                if (current.valid() && (!best.valid() || current.totalScore < best.totalScore)) {
+                    best = current;
+                } else if (!best.valid() && current.totalScore < best.totalScore) {
+                    best = current;
+                }
+
+                if (callback) {
+                    const double progressBase = std::min(0.84, 0.18 + elapsedSeconds(started) / limit * 0.66);
+                    callback({current.collisionCount == 0 ? SolverPhase::Compression : SolverPhase::CollisionResolution, progressBase, current, best, elapsedSeconds(started)});
+                }
+            } else {
+                ++it;
             }
         }
 
-        current = scorer.evaluate(document, settings, current.poses, &penalties);
-        if (current.valid() && (!best.valid() || current.totalScore < best.totalScore)) {
-            best = current;
-        } else if (!best.valid() && current.totalScore < best.totalScore) {
-            best = current;
+        while (!stopRequested.load() && elapsedSeconds(started) < limit && futures.size() < attemptThreads) {
+            launchAttempt(nextAttempt++);
         }
 
-        ++attempt;
+        if (!completedAny) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
     }
 
     if (callback) {

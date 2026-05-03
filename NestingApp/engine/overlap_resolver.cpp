@@ -8,12 +8,12 @@ LayoutState OverlapResolver::resolve(
     const Document& document,
     const EngineSettings& settings,
     LayoutState state,
-    PenaltySystem& penalties,
+    PenaltySystem& attemptPenalties,
     WorkerPool& workerPool,
     const std::atomic_bool& stopRequested,
     unsigned int seed) const {
     GuidedLocalSearch search;
-    return search.improve(document, settings, std::move(state), penalties, workerPool, stopRequested, seed, settings.qualityMode == QualityMode::Fast ? 8 : 18);
+    return search.improve(document, settings, std::move(state), attemptPenalties, workerPool, stopRequested, seed, settings.qualityMode == QualityMode::Fast ? 8 : 18);
 }
 
 } // namespace nest

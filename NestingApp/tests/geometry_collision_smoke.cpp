@@ -33,6 +33,12 @@ Part boxPart(double x0, double y0, double x1, double y1) {
     return partFromRings({boxRing(x0, y0, x1, y1)});
 }
 
+Part trianglePart(Vec2 a, Vec2 b, Vec2 c) {
+    Ring ring;
+    ring.points = {a, b, c, a};
+    return partFromRings({ring});
+}
+
 Part donutPart() {
     return partFromRings({
         boxRing(0.0, 0.0, 100.0, 100.0),
@@ -61,6 +67,26 @@ Sheet customSheetWithZone(const Ring& zone, bool forbidden) {
     } else {
         profile.holes.push_back(zone);
     }
+    sheet.setProfile(profile);
+    return sheet;
+}
+
+Sheet concaveLSheet() {
+    Sheet sheet;
+    sheet.width = 120.0;
+    sheet.height = 120.0;
+    sheet.margin = 0.0;
+    SheetProfile profile;
+    profile.outerContour.points = {
+        {0.0, 0.0},
+        {120.0, 0.0},
+        {120.0, 40.0},
+        {40.0, 40.0},
+        {40.0, 120.0},
+        {0.0, 120.0},
+        {0.0, 0.0}
+    };
+    profile.hasCustomProfile = true;
     sheet.setProfile(profile);
     return sheet;
 }
@@ -138,6 +164,15 @@ int main() {
     rotatedMirrored.angleRadians = degreesToRadians(35.0);
     rotatedMirrored.mirrored = true;
     ok &= expect(partsCollide(longBox, origin, longBox, rotatedMirrored, eps), "mirrored rotated pose collision is detected");
+
+    const Sheet lSheet = concaveLSheet();
+    const Part edgeLeavesConcaveSheet = trianglePart({30.0, 80.0}, {80.0, 30.0}, {30.0, 30.0});
+    ok &= expect(!isPartInsideSheet(edgeLeavesConcaveSheet, origin, lSheet, eps), "concave sheet catches edge leaving and re-entering");
+
+    const Part holeCrossing = boxPart(30.0, 50.0, 50.0, 70.0);
+    ok &= expect(!isPartInsideSheet(holeCrossing, origin, holedSheet, eps), "sheet hole boundary crossing is invalid");
+
+    ok &= expect(overlapsSheetHolesOrForbiddenZones(holeCrossing, origin, forbiddenSheet, eps), "forbidden zone boundary crossing is invalid");
 
     const ClearanceSettings clearance{5.0, 0.0, eps};
     Pose nearButSeparate;

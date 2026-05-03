@@ -112,6 +112,7 @@ The first production-oriented contour validation layer is active:
 - part collision is hole-aware: solid area is treated as outer contours minus holes
 - parts may occupy another part's hole as long as they do not touch/intersect solid material
 - sheet containment validates rectangular sheets, custom sheet outer contours, sheet holes, and forbidden zones
+- custom sheet containment checks boundary crossings and multiple samples along each solid edge, so concave sheet cases are no longer limited to vertex/midpoint validation
 - clearance has a real API through `ClearanceSettings`, `partsRespectSpacing`, and `partRespectsSheetMargin`
 
 The current clearance implementation is conservative and distance-based. It intentionally does not yet perform true polygon offsetting, but the interface is designed so a future offset engine can replace the internals without changing solver/UI boundaries.
@@ -128,12 +129,12 @@ The solver is no longer limited to a single demo row placement pass. `NestingEng
 
 - `LayoutState` stores current poses, compactness, collision count, invalid part count, penalties, and total score
 - `LayoutScore` evaluates contour collision, spacing, sheet validity, used area, and utilization
-- `PenaltySystem` pair weights are used by guided local search so repeated collisions become more expensive
-- `PoseSampler` generates translation, boundary snap, neighbor-edge snap, rotation, mirror, and random jump candidates
+- `PenaltySystem` separates per-attempt pair weights from optional low-weight global bias
+- `PoseSampler` generates translation, sheet contact, neighbor-edge contact, hole/forbidden-zone contact, rotation, mirror, and random jump candidates
 - `GuidedLocalSearch` tries candidate moves for colliding parts and accepts score-improving moves
 - `OverlapResolver` runs guided collision resolution while allowing temporarily invalid/overlapping layouts during exploration
-- `Compression` has a score-based pass that only accepts moves that improve the layout without creating invalidity
-- `MultiStartSolver` cycles placement strategies, seeds, and part orderings within `timeLimitSeconds`, while preserving best-so-far
+- `Compression` searches for safe movement with large-to-small step refinement and only accepts score-improving valid moves
+- `MultiStartSolver` runs attempts in parallel through the internal worker pool, cycling placement strategies, seeds, and part orderings within `timeLimitSeconds`, while preserving best-so-far
 
 Solver quality smoke test target:
 
@@ -145,8 +146,8 @@ build\NestingApp\Release\CigerNestingSolverQualitySmoke.exe <repo-root>
 
 - Clearance is conservative segment-distance validation, not true polygon offset.
 - DXF/PLT import support is intentionally small and ASCII-oriented.
-- Custom sheet containment is a first validation interface, not a full polygon offset/clearance implementation.
+- Custom sheet containment is stronger for concave boundaries, holes, and forbidden zones, but sheet margin is still conservative and not a true inward offset.
 - User placement points are model/engine-ready, but canvas click editing is not enabled yet.
 - Ultra refinement is still a placeholder phase; 0.001 degree local refinement is not implemented yet.
 - Direct2D, GPU evaluation, AI import, and Corel macro installation are intentionally not implemented yet.
-- The solver is now collision-driven v1, but candidate generation and compression remain intentionally CPU/simple enough to keep the architecture clean.
+- The solver is now collision-driven v1 with parallel multi-start, but contact candidates are still geometric heuristics rather than a full NFP engine.

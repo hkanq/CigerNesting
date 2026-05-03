@@ -169,7 +169,8 @@ void Compression::compressByStrategy(const Document& document, const EngineSetti
 LayoutState Compression::compressByScore(const Document& document, const EngineSettings& settings, LayoutState state, const PenaltySystem& penalties) const {
     LayoutScore scorer;
     state = scorer.evaluate(document, settings, state.poses, &penalties);
-    const double step = std::max(1.0, settings.partSpacing * 0.5);
+    const double initialStep = std::max(8.0, std::min(document.sheet.width, document.sheet.height) * 0.10);
+    const double minStep = 0.25;
     const Vec2 sheetCenter{document.sheet.origin.x + document.sheet.width * 0.5, document.sheet.origin.y + document.sheet.height * 0.5};
 
     auto directionFor = [&](const Part& part, const Pose& pose, int axis) {
@@ -182,6 +183,51 @@ LayoutState Compression::compressByScore(const Document& document, const EngineS
         return axis == 0 ? horizontalCompressionSign(settings.placementStrategy) : verticalCompressionSign(settings.placementStrategy);
     };
 
+    auto shiftedPose = [](Pose pose, int axis, int sign, double distance) {
+        if (axis == 0) {
+            pose.x += static_cast<double>(sign) * distance;
+        } else {
+            pose.y += static_cast<double>(sign) * distance;
+        }
+        return pose;
+    };
+
+    auto evaluateShift = [&](const LayoutState& base, size_t partIndex, int axis, int sign, double distance) {
+        std::vector<Pose> trialPoses = base.poses;
+        trialPoses[partIndex] = shiftedPose(trialPoses[partIndex], axis, sign, distance);
+        return scorer.evaluate(document, settings, trialPoses, &penalties);
+    };
+
+    auto pathIsSafe = [&](const LayoutState& base, size_t partIndex, int axis, int sign, double distance) {
+        const double sampleStep = std::max(1.0, settings.partSpacing * 0.5);
+        const int samples = std::max(1, static_cast<int>(std::ceil(distance / sampleStep)));
+        for (int sample = 1; sample <= samples; ++sample) {
+            const double d = distance * static_cast<double>(sample) / static_cast<double>(samples);
+            const LayoutState trial = evaluateShift(base, partIndex, axis, sign, d);
+            if (!trial.valid()) {
+                return false;
+            }
+        }
+        return true;
+    };
+
+    auto bestRefinedShift = [&](const LayoutState& base, size_t partIndex, int axis, int sign) {
+        double accepted = 0.0;
+        double step = initialStep;
+        LayoutState best = base;
+        while (step >= minStep) {
+            const double candidateDistance = accepted + step;
+            LayoutState trial = evaluateShift(base, partIndex, axis, sign, candidateDistance);
+            if (trial.valid() && trial.totalScore + 1e-9 < best.totalScore && pathIsSafe(base, partIndex, axis, sign, candidateDistance)) {
+                accepted = candidateDistance;
+                best = std::move(trial);
+            } else {
+                step *= 0.5;
+            }
+        }
+        return best;
+    };
+
     for (int pass = 0; pass < 5; ++pass) {
         bool changed = false;
         for (size_t i = 0; i < state.poses.size() && i < document.parts.size(); ++i) {
@@ -190,15 +236,7 @@ LayoutState Compression::compressByScore(const Document& document, const EngineS
                 if (sign == 0) {
                     continue;
                 }
-                Pose candidate = state.poses[i];
-                if (axis == 0) {
-                    candidate.x += static_cast<double>(sign) * step;
-                } else {
-                    candidate.y += static_cast<double>(sign) * step;
-                }
-                std::vector<Pose> trialPoses = state.poses;
-                trialPoses[i] = candidate;
-                LayoutState trial = scorer.evaluate(document, settings, trialPoses, &penalties);
+                LayoutState trial = bestRefinedShift(state, i, axis, sign);
                 if (trial.valid() && trial.totalScore + 1e-9 < state.totalScore) {
                     state = std::move(trial);
                     changed = true;

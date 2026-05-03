@@ -10,18 +10,18 @@ LayoutState GuidedLocalSearch::improve(
     const Document& document,
     const EngineSettings& settings,
     LayoutState state,
-    PenaltySystem& penalties,
+    PenaltySystem& attemptPenalties,
     WorkerPool& workerPool,
     const std::atomic_bool& stopRequested,
     unsigned int seed,
     int maxIterations) const {
     LayoutScore scorer;
-    state = scorer.evaluate(document, settings, state.poses, &penalties);
+    state = scorer.evaluate(document, settings, state.poses, &attemptPenalties);
 
     for (int iteration = 0; iteration < maxIterations && !stopRequested.load(); ++iteration) {
         const LayoutState before = state;
         for (const CollisionPair& pair : state.collisionPairs) {
-            penalties.observeCollision(pair.a, pair.b);
+            attemptPenalties.observeCollision(pair.a, pair.b);
         }
 
         std::vector<size_t> targets;
@@ -41,13 +41,13 @@ LayoutState GuidedLocalSearch::improve(
             if (stopRequested.load()) {
                 break;
             }
-            changed = tryImprovePart(document, settings, state, penalties, workerPool, partIndex, seed, iteration) || changed;
+            changed = tryImprovePart(document, settings, state, attemptPenalties, workerPool, partIndex, seed, iteration) || changed;
             if (state.valid()) {
                 break;
             }
         }
 
-        state = scorer.evaluate(document, settings, state.poses, &penalties);
+        state = scorer.evaluate(document, settings, state.poses, &attemptPenalties);
         if (!changed && state.totalScore >= before.totalScore - 1e-9) {
             break;
         }
@@ -60,7 +60,7 @@ bool GuidedLocalSearch::tryImprovePart(
     const Document& document,
     const EngineSettings& settings,
     LayoutState& state,
-    const PenaltySystem& penalties,
+    const PenaltySystem& attemptPenalties,
     WorkerPool& workerPool,
     size_t partIndex,
     unsigned int seed,
@@ -90,7 +90,7 @@ bool GuidedLocalSearch::tryImprovePart(
             for (size_t i = begin; i < end; ++i) {
                 std::vector<Pose> trialPoses = state.poses;
                 trialPoses[partIndex] = candidates[i];
-                LayoutState trial = scorer.evaluate(document, settings, trialPoses, &penalties);
+                LayoutState trial = scorer.evaluate(document, settings, trialPoses, &attemptPenalties);
                 if (trial.totalScore + 1e-9 < localBest.totalScore) {
                     localBest = std::move(trial);
                 }

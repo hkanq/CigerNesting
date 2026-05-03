@@ -21,7 +21,13 @@ double safeSheetArea(const Document& document) {
 
 } // namespace
 
-LayoutState LayoutScore::evaluate(const Document& document, const EngineSettings& settings, const std::vector<Pose>& poses, const PenaltySystem* penalties) const {
+LayoutState LayoutScore::evaluate(
+    const Document& document,
+    const EngineSettings& settings,
+    const std::vector<Pose>& poses,
+    const PenaltySystem* attemptPenalties,
+    const PenaltySystem* globalPenalties,
+    double globalPenaltyWeight) const {
     LayoutState state;
     state.poses = poses;
 
@@ -50,7 +56,9 @@ LayoutState LayoutScore::evaluate(const Document& document, const EngineSettings
         }
         const AABB boxA = transformedBounds(document.parts[a], poses[a]);
         const AABB boxB = transformedBounds(document.parts[b], poses[b]);
-        const double pairWeight = penalties ? penalties->weight(a, b) : 1.0;
+        const double attemptWeight = attemptPenalties ? attemptPenalties->weight(a, b) : 1.0;
+        const double globalWeight = globalPenalties ? globalPenalties->weight(a, b) : 1.0;
+        const double pairWeight = attemptWeight * (1.0 + std::max(0.0, globalPenaltyWeight) * std::max(0.0, globalWeight - 1.0));
         if (partsCollide(document.parts[a], poses[a], document.parts[b], poses[b], settings.collisionTolerance)) {
             ++state.collisionCount;
             state.collisionPairs.push_back({a, b});

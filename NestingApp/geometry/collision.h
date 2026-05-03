@@ -44,6 +44,7 @@ bool partsRespectSpacing(const Part& a, const Pose& poseA, const Part& b, const 
 bool partRespectsSheetMargin(const Part& part, const Pose& pose, const Sheet& sheet, const ClearanceSettings& clearance);
 bool isPartInsideSheet(const Part& part, const Pose& pose, const Sheet& sheet, double eps);
 bool overlapsSheetHolesOrForbiddenZones(const Part& part, const Pose& pose, const Sheet& sheet, double eps);
+double minimumDistanceToSheetFeatures(const Part& part, const Pose& pose, const Sheet& sheet, double eps = 1e-9);
 
 bool ringsOverlap(const Ring& a, const Ring& b, double tolerance = 1e-9);
 bool partsOverlap(const Part& a, const Pose& poseA, const Part& b, const Pose& poseB, double tolerance = 1e-9);

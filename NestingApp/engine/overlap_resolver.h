@@ -15,7 +15,7 @@ public:
         const Document& document,
         const EngineSettings& settings,
         LayoutState state,
-        PenaltySystem& penalties,
+        PenaltySystem& attemptPenalties,
         WorkerPool& workerPool,
         const std::atomic_bool& stopRequested,
         unsigned int seed) const;

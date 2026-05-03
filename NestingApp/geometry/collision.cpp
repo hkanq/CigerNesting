@@ -71,6 +71,14 @@ int orientationSign(Vec2 a, Vec2 b, Vec2 c, double eps) {
     return 0;
 }
 
+bool segmentsProperlyIntersect(Vec2 a, Vec2 b, Vec2 c, Vec2 d, double eps) {
+    const int o1 = orientationSign(a, b, c, eps);
+    const int o2 = orientationSign(a, b, d, eps);
+    const int o3 = orientationSign(c, d, a, eps);
+    const int o4 = orientationSign(c, d, b, eps);
+    return o1 != 0 && o2 != 0 && o3 != 0 && o4 != 0 && o1 != o2 && o3 != o4;
+}
+
 template <typename Callback>
 void forEachSegment(const std::vector<Vec2>& points, double eps, Callback callback) {
     const size_t count = effectivePointCount(points, eps);
@@ -125,6 +133,34 @@ bool isPointInAnyZone(const std::vector<Ring>& zones, Vec2 point, double eps) {
         }
     }
     return false;
+}
+
+const std::vector<Ring>& sheetHoles(const Sheet& sheet);
+const std::vector<Ring>& sheetForbiddenZones(const Sheet& sheet);
+
+bool ringSegmentProperlyCrossesBoundary(Vec2 a, Vec2 b, const std::vector<Vec2>& boundary, double eps) {
+    bool crosses = false;
+    forEachSegment(boundary, eps, [&](Vec2 c, Vec2 d) {
+        if (!crosses && segmentsProperlyIntersect(a, b, c, d, eps)) {
+            crosses = true;
+        }
+    });
+    return crosses;
+}
+
+bool segmentSamplesInsideUsableSheet(Vec2 a, Vec2 b, const Ring& outer, const Sheet& sheet, double eps) {
+    constexpr double fractions[] = {0.0, 0.0625, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 0.9375, 1.0};
+    for (const double t : fractions) {
+        const Vec2 point = a + (b - a) * t;
+        if (pointInRing(outer.points, point, eps) == PointLocation::Outside) {
+            return false;
+        }
+        if (isPointInAnyZone(sheetHoles(sheet), point, eps) ||
+            isPointInAnyZone(sheetForbiddenZones(sheet), point, eps)) {
+            return false;
+        }
+    }
+    return true;
 }
 
 Ring rectangularOuterWithMargin(const Sheet& sheet, double margin) {
@@ -292,12 +328,10 @@ bool transformedPartInsideSheet(const TransformedPart& part, const Sheet& sheet,
             }
 
             const Vec2 next = ring.points[(i + 1) % count];
-            const Vec2 mid = (point + next) * 0.5;
-            if (pointInRing(outer.points, mid, eps) == PointLocation::Outside) {
+            if (!segmentSamplesInsideUsableSheet(point, next, outer, sheet, eps)) {
                 return false;
             }
-            if (isPointInAnyZone(sheetHoles(sheet), mid, eps) ||
-                isPointInAnyZone(sheetForbiddenZones(sheet), mid, eps)) {
+            if (ringSegmentProperlyCrossesBoundary(point, next, outer.points, eps)) {
                 return false;
             }
         }
@@ -464,6 +498,18 @@ bool overlapsSheetHolesOrForbiddenZones(const Part& part, const Pose& pose, cons
     const TransformedPart transformed = transformPart(part, pose);
     return zonesOverlapSolidPart(transformed, sheetHoles(sheet), eps) ||
         zonesOverlapSolidPart(transformed, sheetForbiddenZones(sheet), eps);
+}
+
+double minimumDistanceToSheetFeatures(const Part& part, const Pose& pose, const Sheet& sheet, double eps) {
+    const TransformedPart transformed = transformPart(part, pose);
+    double best = minBoundaryDistanceToRing(transformed, physicalSheetOuter(sheet), eps);
+    for (const Ring& hole : sheetHoles(sheet)) {
+        best = std::min(best, minBoundaryDistanceToRing(transformed, hole, eps));
+    }
+    for (const Ring& zone : sheetForbiddenZones(sheet)) {
+        best = std::min(best, minBoundaryDistanceToRing(transformed, zone, eps));
+    }
+    return best;
 }
 
 bool partRespectsSheetMargin(const Part& part, const Pose& pose, const Sheet& sheet, const ClearanceSettings& clearance) {
