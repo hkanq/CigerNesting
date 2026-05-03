@@ -1,5 +1,6 @@
 #include "engine/compression.h"
 
+#include "engine/layout_score.h"
 #include "geometry/collision.h"
 #include <algorithm>
 #include <cmath>
@@ -163,6 +164,52 @@ void Compression::compressByStrategy(const Document& document, const EngineSetti
             }
         }
     }
+}
+
+LayoutState Compression::compressByScore(const Document& document, const EngineSettings& settings, LayoutState state, const PenaltySystem& penalties) const {
+    LayoutScore scorer;
+    state = scorer.evaluate(document, settings, state.poses, &penalties);
+    const double step = std::max(1.0, settings.partSpacing * 0.5);
+    const Vec2 sheetCenter{document.sheet.origin.x + document.sheet.width * 0.5, document.sheet.origin.y + document.sheet.height * 0.5};
+
+    auto directionFor = [&](const Part& part, const Pose& pose, int axis) {
+        if (settings.placementStrategy == PlacementStrategy::CenterOut || settings.placementStrategy == PlacementStrategy::OutsideIn) {
+            const AABB box = transformedBounds(part, pose);
+            const double current = axis == 0 ? box.center().x : box.center().y;
+            const double target = axis == 0 ? sheetCenter.x : sheetCenter.y;
+            return signToward(current, target);
+        }
+        return axis == 0 ? horizontalCompressionSign(settings.placementStrategy) : verticalCompressionSign(settings.placementStrategy);
+    };
+
+    for (int pass = 0; pass < 5; ++pass) {
+        bool changed = false;
+        for (size_t i = 0; i < state.poses.size() && i < document.parts.size(); ++i) {
+            for (int axis = 0; axis < 2; ++axis) {
+                const int sign = directionFor(document.parts[i], state.poses[i], axis);
+                if (sign == 0) {
+                    continue;
+                }
+                Pose candidate = state.poses[i];
+                if (axis == 0) {
+                    candidate.x += static_cast<double>(sign) * step;
+                } else {
+                    candidate.y += static_cast<double>(sign) * step;
+                }
+                std::vector<Pose> trialPoses = state.poses;
+                trialPoses[i] = candidate;
+                LayoutState trial = scorer.evaluate(document, settings, trialPoses, &penalties);
+                if (trial.valid() && trial.totalScore + 1e-9 < state.totalScore) {
+                    state = std::move(trial);
+                    changed = true;
+                }
+            }
+        }
+        if (!changed) {
+            break;
+        }
+    }
+    return state;
 }
 
 } // namespace nest

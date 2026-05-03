@@ -122,11 +122,31 @@ Geometry smoke test target:
 build\NestingApp\Release\CigerNestingGeometryCollisionSmoke.exe
 ```
 
+## Continuous Solver V1
+
+The solver is no longer limited to a single demo row placement pass. `NestingEngine` now drives a multi-start collision-driven solver:
+
+- `LayoutState` stores current poses, compactness, collision count, invalid part count, penalties, and total score
+- `LayoutScore` evaluates contour collision, spacing, sheet validity, used area, and utilization
+- `PenaltySystem` pair weights are used by guided local search so repeated collisions become more expensive
+- `PoseSampler` generates translation, boundary snap, neighbor-edge snap, rotation, mirror, and random jump candidates
+- `GuidedLocalSearch` tries candidate moves for colliding parts and accepts score-improving moves
+- `OverlapResolver` runs guided collision resolution while allowing temporarily invalid/overlapping layouts during exploration
+- `Compression` has a score-based pass that only accepts moves that improve the layout without creating invalidity
+- `MultiStartSolver` cycles placement strategies, seeds, and part orderings within `timeLimitSeconds`, while preserving best-so-far
+
+Solver quality smoke test target:
+
+```powershell
+build\NestingApp\Release\CigerNestingSolverQualitySmoke.exe <repo-root>
+```
+
 ## Known Gaps
 
 - Clearance is conservative segment-distance validation, not true polygon offset.
 - DXF/PLT import support is intentionally small and ASCII-oriented.
 - Custom sheet containment is a first validation interface, not a full polygon offset/clearance implementation.
 - User placement points are model/engine-ready, but canvas click editing is not enabled yet.
+- Ultra refinement is still a placeholder phase; 0.001 degree local refinement is not implemented yet.
 - Direct2D, GPU evaluation, AI import, and Corel macro installation are intentionally not implemented yet.
-- The solver is still the first strategy inside the larger collision-driven engine architecture.
+- The solver is now collision-driven v1, but candidate generation and compression remain intentionally CPU/simple enough to keep the architecture clean.
