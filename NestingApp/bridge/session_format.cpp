@@ -1,5 +1,6 @@
 #include "bridge/session_format.h"
 
+#include <cstddef>
 #include <sstream>
 
 namespace nest {

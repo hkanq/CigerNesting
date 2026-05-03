@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/polygon.h"
+#include <cstddef>
 #include <string>
 #include <vector>
 
