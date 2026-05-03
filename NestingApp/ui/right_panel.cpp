@@ -184,6 +184,21 @@ EngineSettings RightPanel::getSettings() const {
     settings.timeLimitSeconds = readDouble(timeLimitEdit_, 30.0);
     settings.cpuThreadCount = readInt(threadEdit_, 0);
 
+    const LRESULT placement = SendMessageW(placementCombo_, CB_GETCURSEL, 0, 0);
+    switch (placement) {
+    case 1: settings.placementStrategy = PlacementStrategy::TopLeft; break;
+    case 2: settings.placementStrategy = PlacementStrategy::BottomRight; break;
+    case 3: settings.placementStrategy = PlacementStrategy::TopRight; break;
+    case 4: settings.placementStrategy = PlacementStrategy::LeftToRight; break;
+    case 5: settings.placementStrategy = PlacementStrategy::RightToLeft; break;
+    case 6: settings.placementStrategy = PlacementStrategy::TopToBottom; break;
+    case 7: settings.placementStrategy = PlacementStrategy::BottomToTop; break;
+    case 8: settings.placementStrategy = PlacementStrategy::CenterOut; break;
+    case 9: settings.placementStrategy = PlacementStrategy::OutsideIn; break;
+    case 10: settings.placementStrategy = PlacementStrategy::UserPoints; break;
+    default: settings.placementStrategy = PlacementStrategy::BottomLeft; break;
+    }
+
     const LRESULT mode = SendMessageW(rotationModeCombo_, CB_GETCURSEL, 0, 0);
     switch (mode) {
     case 0: settings.rotationMode = RotationMode::None; break;

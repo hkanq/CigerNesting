@@ -87,6 +87,77 @@ bool partsOverlap(const Part& a, const Pose& poseA, const Part& b, const Pose& p
     return false;
 }
 
+bool isPartInsideSheet(const Part& part, const Pose& pose, const Sheet& sheet) {
+    const auto rings = transformRings(part.rings, pose);
+
+    if (!sheet.hasCustomProfile()) {
+        const AABB box = transformedBounds(part, pose);
+        const double left = sheet.origin.x + sheet.margin;
+        const double top = sheet.origin.y + sheet.margin;
+        const double right = sheet.origin.x + sheet.width - sheet.margin;
+        const double bottom = sheet.origin.y + sheet.height - sheet.margin;
+        return box.min.x >= left - 1e-6 && box.min.y >= top - 1e-6 &&
+            box.max.x <= right + 1e-6 && box.max.y <= bottom + 1e-6;
+    }
+
+    const Ring fallbackOuter = sheet.makeRectangularOuterContour();
+    const Ring& outer = sheet.profile().outerContour.points.empty() ? fallbackOuter : sheet.profile().outerContour;
+
+    for (const auto& ring : rings) {
+        if (ring.isHole) {
+            continue;
+        }
+        for (const auto& point : ring.points) {
+            bool onBoundary = false;
+            for (size_t i = 0; i + 1 < outer.points.size(); ++i) {
+                if (onSegment(outer.points[i], outer.points[i + 1], point, 1e-6)) {
+                    onBoundary = true;
+                    break;
+                }
+            }
+            if (!onBoundary && !isPointInRing(point, outer.points)) {
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
+bool overlapsSheetHolesOrForbiddenZones(const Part& part, const Pose& pose, const Sheet& sheet) {
+    if (!sheet.hasCustomProfile()) {
+        return false;
+    }
+
+    const auto rings = transformRings(part.rings, pose);
+    auto overlapsAnyZone = [&](const Ring& zone) {
+        if (zone.points.size() < 3) {
+            return false;
+        }
+        for (const auto& ring : rings) {
+            if (ring.isHole) {
+                continue;
+            }
+            if (ringsOverlap(ring, zone, 1e-6)) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    for (const auto& hole : sheet.profile().holes) {
+        if (overlapsAnyZone(hole)) {
+            return true;
+        }
+    }
+    for (const auto& zone : sheet.profile().forbiddenZones) {
+        if (overlapsAnyZone(zone)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 double aabbOverlapArea(const AABB& a, const AABB& b) {
     if (!a.overlaps(b)) {
         return 0.0;

@@ -18,6 +18,7 @@ public:
     void clear() {
         sourcePath.clear();
         parts.clear();
+        sheet.clearUserPlacementPoints();
     }
 
     void addPart(Part part) {

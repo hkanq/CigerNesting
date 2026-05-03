@@ -7,6 +7,7 @@
 #include "engine/penalty_system.h"
 #include "engine/pose_sampler.h"
 #include "engine/worker_pool.h"
+#include "geometry/collision.h"
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -24,6 +25,12 @@ struct PlacementChoice {
     double angleRadians = 0.0;
     bool mirrored = false;
     AABB bounds;
+};
+
+struct LinearPlacementPlan {
+    bool primaryX = true;
+    int xDirection = 1;
+    int yDirection = 1;
 };
 
 double scoreArea(const Part& part) {
@@ -62,11 +69,10 @@ PlacementChoice choosePlacementChoice(
     const Part& part,
     const std::vector<double>& rotationSamples,
     const std::vector<bool>& mirrorSamples,
-    const EngineSettings& settings,
-    double rowX) {
+    double remainingPrimarySpan,
+    bool primaryX) {
     PlacementChoice best;
     double bestScore = std::numeric_limits<double>::max();
-    const double rightLimit = settings.sheetWidth - settings.margin;
 
     for (const double angle : rotationSamples) {
         for (const bool mirrored : mirrorSamples) {
@@ -76,9 +82,11 @@ PlacementChoice choosePlacementChoice(
             }
             const double width = std::max(1.0, bounds.width());
             const double height = std::max(1.0, bounds.height());
-            const bool fitsCurrentRow = rowX + width <= rightLimit + 1e-6;
+            const double primarySpan = primaryX ? width : height;
+            const double secondarySpan = primaryX ? height : width;
+            const bool fitsCurrentRow = primarySpan <= remainingPrimarySpan + 1e-6;
             const double fitPenalty = fitsCurrentRow ? 0.0 : 1000000.0;
-            const double score = fitPenalty + width + height * 0.05;
+            const double score = fitPenalty + primarySpan + secondarySpan * 0.05;
             if (score < bestScore) {
                 bestScore = score;
                 best.angleRadians = angle;
@@ -92,6 +100,97 @@ PlacementChoice choosePlacementChoice(
         best.bounds = part.localBounds;
     }
     return best;
+}
+
+LinearPlacementPlan planForStrategy(PlacementStrategy strategy) {
+    switch (strategy) {
+    case PlacementStrategy::TopLeft:
+        return {true, 1, -1};
+    case PlacementStrategy::BottomRight:
+    case PlacementStrategy::RightToLeft:
+        return {true, -1, 1};
+    case PlacementStrategy::TopRight:
+        return {true, -1, -1};
+    case PlacementStrategy::TopToBottom:
+        return {false, 1, -1};
+    case PlacementStrategy::BottomToTop:
+        return {false, 1, 1};
+    case PlacementStrategy::BottomLeft:
+    case PlacementStrategy::LeftToRight:
+    case PlacementStrategy::CenterOut:
+    case PlacementStrategy::OutsideIn:
+    case PlacementStrategy::UserPoints:
+    default:
+        return {true, 1, 1};
+    }
+}
+
+bool usesAnchorPlacement(PlacementStrategy strategy) {
+    return strategy == PlacementStrategy::CenterOut ||
+        strategy == PlacementStrategy::OutsideIn ||
+        strategy == PlacementStrategy::UserPoints;
+}
+
+double clampToSheet(double value, double minValue, double maxValue) {
+    return std::max(minValue, std::min(value, maxValue));
+}
+
+Pose poseFromCornerAnchor(const PlacementChoice& choice, double x, double y, int xDirection, int yDirection) {
+    Pose pose;
+    pose.x = (xDirection >= 0) ? x - choice.bounds.min.x : x - choice.bounds.max.x;
+    pose.y = (yDirection >= 0) ? y - choice.bounds.min.y : y - choice.bounds.max.y;
+    pose.angleRadians = choice.angleRadians;
+    pose.mirrored = choice.mirrored;
+    return pose;
+}
+
+Pose poseFromCenterAnchor(const PlacementChoice& choice, Vec2 anchor) {
+    Pose pose;
+    const Vec2 center = choice.bounds.center();
+    pose.x = anchor.x - center.x;
+    pose.y = anchor.y - center.y;
+    pose.angleRadians = choice.angleRadians;
+    pose.mirrored = choice.mirrored;
+    return pose;
+}
+
+Vec2 centerOutAnchor(size_t placed, double partSpan, const EngineSettings& settings) {
+    const Vec2 center{settings.sheetWidth * 0.5, settings.sheetHeight * 0.5};
+    if (placed == 0) {
+        return center;
+    }
+
+    constexpr double goldenAngle = 2.39996322972865332;
+    const double radius = std::sqrt(static_cast<double>(placed)) * (partSpan + settings.partSpacing) * 0.85;
+    const double angle = static_cast<double>(placed) * goldenAngle;
+    return {
+        clampToSheet(center.x + std::cos(angle) * radius, settings.margin, settings.sheetWidth - settings.margin),
+        clampToSheet(center.y + std::sin(angle) * radius, settings.margin, settings.sheetHeight - settings.margin)
+    };
+}
+
+Vec2 outsideInAnchor(size_t placed, double partSpan, const EngineSettings& settings) {
+    const double left = settings.margin;
+    const double right = settings.sheetWidth - settings.margin;
+    const double low = settings.margin;
+    const double high = settings.sheetHeight - settings.margin;
+    const size_t layer = placed / 4;
+    const double inset = std::min({(right - left) * 0.45, (high - low) * 0.45, static_cast<double>(layer) * (partSpan + settings.partSpacing) * 0.35});
+    const double x0 = left + inset;
+    const double x1 = right - inset;
+    const double y0 = low + inset;
+    const double y1 = high - inset;
+
+    switch (placed % 4) {
+    case 1:
+        return {x1, y1};
+    case 2:
+        return {x1, y0};
+    case 3:
+        return {x0, y1};
+    default:
+        return {x0, y0};
+    }
 }
 
 CollisionReport evaluateLayout(
@@ -269,9 +368,86 @@ void NestingEngine::run() {
     const auto rotations = sampler.coarseRotationSamples(settings);
     const auto mirrors = sampler.mirrorSamples(settings);
 
-    double x = settings.margin;
-    double y = settings.margin;
+    const LinearPlacementPlan placementPlan = planForStrategy(settings.placementStrategy);
+    const double leftLimit = settings.margin;
+    const double rightLimit = settings.sheetWidth - settings.margin;
+    const double lowLimit = settings.margin;
+    const double highLimit = settings.sheetHeight - settings.margin;
+    double x = placementPlan.xDirection > 0 ? leftLimit : rightLimit;
+    double y = placementPlan.yDirection > 0 ? lowLimit : highLimit;
     double rowHeight = 0.0;
+    double columnWidth = 0.0;
+
+    auto placeLinear = [&](const Part& part) {
+        const double remainingPrimary = placementPlan.primaryX
+            ? (placementPlan.xDirection > 0 ? rightLimit - x : x - leftLimit)
+            : (placementPlan.yDirection > 0 ? highLimit - y : y - lowLimit);
+        PlacementChoice choice = choosePlacementChoice(part, rotations, mirrors, std::max(0.0, remainingPrimary), placementPlan.primaryX);
+        double width = std::max(1.0, choice.bounds.width());
+        double height = std::max(1.0, choice.bounds.height());
+
+        if (placementPlan.primaryX) {
+            const bool wraps = placementPlan.xDirection > 0
+                ? (x + width > rightLimit && x > leftLimit)
+                : (x - width < leftLimit && x < rightLimit);
+            if (wraps) {
+                x = placementPlan.xDirection > 0 ? leftLimit : rightLimit;
+                y += static_cast<double>(placementPlan.yDirection) * (rowHeight + settings.partSpacing);
+                rowHeight = 0.0;
+                const double rowRemaining = placementPlan.xDirection > 0 ? rightLimit - x : x - leftLimit;
+                choice = choosePlacementChoice(part, rotations, mirrors, std::max(0.0, rowRemaining), true);
+                width = std::max(1.0, choice.bounds.width());
+                height = std::max(1.0, choice.bounds.height());
+            }
+
+            const Pose pose = poseFromCornerAnchor(choice, x, y, placementPlan.xDirection, placementPlan.yDirection);
+            x += static_cast<double>(placementPlan.xDirection) * (width + settings.partSpacing);
+            rowHeight = std::max(rowHeight, height);
+            return pose;
+        }
+
+        const bool wraps = placementPlan.yDirection > 0
+            ? (y + height > highLimit && y > lowLimit)
+            : (y - height < lowLimit && y < highLimit);
+        if (wraps) {
+            y = placementPlan.yDirection > 0 ? lowLimit : highLimit;
+            x += static_cast<double>(placementPlan.xDirection) * (columnWidth + settings.partSpacing);
+            columnWidth = 0.0;
+            const double columnRemaining = placementPlan.yDirection > 0 ? highLimit - y : y - lowLimit;
+            choice = choosePlacementChoice(part, rotations, mirrors, std::max(0.0, columnRemaining), false);
+            width = std::max(1.0, choice.bounds.width());
+            height = std::max(1.0, choice.bounds.height());
+        }
+
+        const Pose pose = poseFromCornerAnchor(choice, x, y, placementPlan.xDirection, placementPlan.yDirection);
+        y += static_cast<double>(placementPlan.yDirection) * (height + settings.partSpacing);
+        columnWidth = std::max(columnWidth, width);
+        return pose;
+    };
+
+    auto placeAnchored = [&](const Part& part, size_t placed) {
+        const double sheetSpan = std::max(1.0, placementPlan.primaryX ? rightLimit - leftLimit : highLimit - lowLimit);
+        const PlacementChoice choice = choosePlacementChoice(part, rotations, mirrors, sheetSpan, true);
+        const double width = std::max(1.0, choice.bounds.width());
+        const double height = std::max(1.0, choice.bounds.height());
+        const double partSpan = std::max(width, height);
+
+        Vec2 anchor;
+        if (settings.placementStrategy == PlacementStrategy::OutsideIn) {
+            anchor = outsideInAnchor(placed, partSpan, settings);
+        } else if (settings.placementStrategy == PlacementStrategy::UserPoints && !doc->sheet.getUserPlacementPoints().empty()) {
+            const auto& anchors = doc->sheet.getUserPlacementPoints();
+            anchor = anchors[placed % anchors.size()];
+            const size_t layer = placed / anchors.size();
+            anchor.x += static_cast<double>(layer) * (width + settings.partSpacing);
+        } else {
+            anchor = centerOutAnchor(placed, partSpan, settings);
+        }
+
+        anchor.x = clampToSheet(anchor.x, leftLimit + width * 0.5, rightLimit - width * 0.5);
+        anchor.y = clampToSheet(anchor.y, lowLimit + height * 0.5, highLimit - height * 0.5);
+        return poseFromCenterAnchor(choice, anchor);
+    };
 
     for (size_t placed = 0; placed < order.size(); ++placed) {
         if (stopRequested_.load()) {
@@ -281,29 +457,10 @@ void NestingEngine::run() {
         const size_t idx = order[placed];
         const Part& part = doc->parts[idx];
 
-        PlacementChoice choice = choosePlacementChoice(part, rotations, mirrors, settings, x);
-        double width = std::max(1.0, choice.bounds.width());
-        double height = std::max(1.0, choice.bounds.height());
-
-        if (x + width > settings.sheetWidth - settings.margin && x > settings.margin) {
-            x = settings.margin;
-            y += rowHeight + settings.partSpacing;
-            rowHeight = 0.0;
-            choice = choosePlacementChoice(part, rotations, mirrors, settings, x);
-            width = std::max(1.0, choice.bounds.width());
-            height = std::max(1.0, choice.bounds.height());
-        }
-
-        Pose pose;
-        pose.x = x - choice.bounds.min.x;
-        pose.y = y - choice.bounds.min.y;
-        pose.angleRadians = choice.angleRadians;
-        pose.mirrored = choice.mirrored;
-        poses[idx] = pose;
+        const bool useAnchorPlacement = usesAnchorPlacement(settings.placementStrategy) &&
+            (settings.placementStrategy != PlacementStrategy::UserPoints || !doc->sheet.getUserPlacementPoints().empty());
+        poses[idx] = useAnchorPlacement ? placeAnchored(part, placed) : placeLinear(part);
         bestPoses = poses;
-
-        x += width + settings.partSpacing;
-        rowHeight = std::max(rowHeight, height);
 
         const auto report = evaluateCurrent();
         const double progress = 0.05 + 0.35 * (static_cast<double>(placed + 1) / static_cast<double>(order.size()));
@@ -334,7 +491,7 @@ void NestingEngine::run() {
     }
 
     Compression compression;
-    compression.compressLeftUp(*doc, settings, poses);
+    compression.compressByStrategy(*doc, settings, poses);
     auto report = evaluateCurrent();
     bestPoses = poses;
     publishIfDue(SolverPhase::Compression, 0.76, report, true);
@@ -351,19 +508,28 @@ void NestingEngine::run() {
     }
 
     report = evaluateCurrent();
-    publishIfDue(SolverPhase::FinalValidation, 0.97, report, true);
+    size_t sheetViolationCount = 0;
+    for (size_t i = 0; i < doc->parts.size() && i < poses.size(); ++i) {
+        if (!isPartInsideSheet(doc->parts[i], poses[i], doc->sheet) ||
+            overlapsSheetHolesOrForbiddenZones(doc->parts[i], poses[i], doc->sheet)) {
+            ++sheetViolationCount;
+        }
+    }
+    CollisionReport finalReport = report;
+    finalReport.collisionCount += sheetViolationCount;
+    publishIfDue(SolverPhase::FinalValidation, 0.97, finalReport, true);
 
     const double utilization = layoutUtilization(*doc, poses, settings);
     {
         std::lock_guard<std::mutex> lock(resultMutex_);
         bestResult_.bestPoses = bestPoses;
-        bestResult_.collisionCount = report.collisionCount;
-        bestResult_.overlapScore = report.overlapScore;
+        bestResult_.collisionCount = finalReport.collisionCount;
+        bestResult_.overlapScore = finalReport.overlapScore;
         bestResult_.utilization = utilization;
-        bestResult_.valid = report.collisionCount == 0;
+        bestResult_.valid = finalReport.collisionCount == 0;
     }
 
-    publishSnapshot(SolverPhase::Done, 1.0, poses, bestPoses, report.collisionCount, report.overlapScore, utilization, false, elapsedSecondsSince(started));
+    publishSnapshot(SolverPhase::Done, 1.0, poses, bestPoses, finalReport.collisionCount, finalReport.overlapScore, utilization, false, elapsedSecondsSince(started));
     running_.store(false);
 }
 

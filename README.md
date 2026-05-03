@@ -53,8 +53,9 @@ build\NestingApp\Debug\CigerNesting.exe
 1. Run `build\NestingApp\Release\CigerNesting.exe`.
 2. Use `Dosya Aç` / `Open File`.
 3. Load `samples\simple_polygons.svg` or `samples\basic_shapes.svg`.
-4. Press `Başlat` / `Start`.
-5. Verify that the progress bar and phase text update and the canvas layout changes without freezing.
+4. Choose a `Dizim Başlangıcı` / `Placement Start` strategy from the right panel.
+5. Press `Başlat` / `Start`.
+6. Verify that the progress bar and phase text update and the canvas layout changes without freezing.
 
 Additional sample files:
 
@@ -63,9 +64,49 @@ samples\simple_plt.plt
 samples\simple_dxf.dxf
 ```
 
+## Placement Strategy
+
+The initial placement stage is no longer hard-wired to a single left-to-right row pass. `EngineSettings::placementStrategy` supports:
+
+- `BottomLeft`, `TopLeft`, `BottomRight`, `TopRight`
+- `LeftToRight`, `RightToLeft`
+- `TopToBottom`, `BottomToTop`
+- `CenterOut`, `OutsideIn`
+- `UserPoints`
+
+The current solver still uses a deliberately simple first placement strategy, but the selected direction now flows from the Win32 settings panel into the engine. `CenterOut` and `OutsideIn` use anchor-based starts; `UserPoints` falls back to `BottomLeft` until user-defined anchors are provided.
+
+## Custom Sheet Foundation
+
+`Sheet` now carries a `SheetProfile` model with an outer contour, holes, and forbidden zones while preserving the rectangular `width` / `height` path. This is the foundation for future stock contours such as oval sheets, offcut/hurda boundaries, rounded plates, holes, and no-go zones.
+
+Future sheet import paths are expected to support:
+
+- selecting a stock-area contour from a file
+- marking an SVG/DXF contour as the sheet boundary
+- receiving sheet contour and parts separately through the Corel bridge
+
+## User Placement Points
+
+`Sheet` includes user placement anchor storage via `addUserPlacementPoint`, `clearUserPlacementPoints`, and `getUserPlacementPoints`. Canvas interaction is not enabled yet, but the engine can already consume these anchors when `PlacementStrategy::UserPoints` is selected.
+
+## Icon
+
+The executable includes a native Win32 icon resource:
+
+```text
+NestingApp\resources\CigerNesting.rc
+NestingApp\resources\resource.h
+NestingApp\resources\app_icon.ico
+```
+
+The icon is compiled into `CigerNesting.exe` and loaded for the main window/taskbar class.
+
 ## Known Gaps
 
 - Current spacing is still based on simple collision/AABB checks, not true polygon offset.
 - DXF/PLT import support is intentionally small and ASCII-oriented.
+- Custom sheet containment is a first validation interface, not a full polygon offset/clearance implementation.
+- User placement points are model/engine-ready, but canvas click editing is not enabled yet.
 - Direct2D, GPU evaluation, AI import, and Corel macro installation are intentionally not implemented yet.
 - The solver is still the first strategy inside the larger collision-driven engine architecture.

@@ -1,6 +1,7 @@
 #include "app/main_window.h"
 
 #include "localization/localization.h"
+#include "resources/resource.h"
 #include "ui/control_ids.h"
 #include "ui/layout.h"
 #include <commdlg.h>
@@ -19,14 +20,22 @@ void registerMainWindowClass(HINSTANCE instance) {
         return;
     }
 
-    WNDCLASSW wc{};
+    WNDCLASSEXW wc{};
+    wc.cbSize = sizeof(wc);
     wc.hInstance = instance;
     wc.lpszClassName = kMainWindowClassName;
     wc.lpfnWndProc = MainWindow::wndProc;
     wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
-    wc.hIcon = LoadIcon(nullptr, IDI_APPLICATION);
+    wc.hIcon = LoadIconW(instance, MAKEINTRESOURCEW(IDI_APP_ICON));
+    wc.hIconSm = reinterpret_cast<HICON>(LoadImageW(instance, MAKEINTRESOURCEW(IDI_APP_ICON), IMAGE_ICON, 16, 16, LR_DEFAULTCOLOR));
+    if (!wc.hIcon) {
+        wc.hIcon = LoadIcon(nullptr, IDI_APPLICATION);
+    }
+    if (!wc.hIconSm) {
+        wc.hIconSm = wc.hIcon;
+    }
     wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
-    RegisterClassW(&wc);
+    RegisterClassExW(&wc);
     registered = true;
 }
 
@@ -95,6 +104,14 @@ bool MainWindow::create(HINSTANCE instance, int showCommand) {
         return false;
     }
 
+    HICON largeIcon = LoadIconW(instance, MAKEINTRESOURCEW(IDI_APP_ICON));
+    HICON smallIcon = reinterpret_cast<HICON>(LoadImageW(instance, MAKEINTRESOURCEW(IDI_APP_ICON), IMAGE_ICON, 16, 16, LR_DEFAULTCOLOR));
+    if (largeIcon) {
+        SendMessageW(hwnd_, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(largeIcon));
+    }
+    if (smallIcon) {
+        SendMessageW(hwnd_, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(smallIcon));
+    }
     SetWindowTextW(hwnd_, Localization::instance().text(TextId::AppTitle));
     ShowWindow(hwnd_, showCommand);
     UpdateWindow(hwnd_);
