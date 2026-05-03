@@ -33,6 +33,17 @@ struct LinearPlacementPlan {
     int yDirection = 1;
 };
 
+struct ValidationSummary {
+    CollisionReport collisionReport;
+    size_t spacingFailureCount = 0;
+    size_t invalidPartCount = 0;
+    size_t sheetMarginFailureCount = 0;
+
+    size_t validationFailureCount() const {
+        return collisionReport.collisionCount + spacingFailureCount + invalidPartCount;
+    }
+};
+
 double scoreArea(const Part& part) {
     return part.area > 0.0 ? part.area : part.localBounds.area();
 }
@@ -224,6 +235,52 @@ double layoutUtilization(const Document& document, const std::vector<Pose>& pose
     return std::max(0.0, std::min(1.0, std::max(conservative, packingDensity * conservative)));
 }
 
+ValidationSummary validateLayout(
+    const Document& document,
+    const std::vector<Pose>& poses,
+    const EngineSettings& settings,
+    ParallelCollisionEvaluator& evaluator,
+    WorkerPool& workerPool,
+    size_t workerThreadCount) {
+    ValidationSummary summary;
+    summary.collisionReport = evaluateLayout(document, poses, settings, evaluator, workerPool, workerThreadCount);
+
+    const ClearanceSettings clearance{
+        settings.partSpacing,
+        settings.margin,
+        settings.collisionTolerance
+    };
+
+    BroadPhase broad;
+    const auto spacingPairs = broad.findCandidatePairs(document.parts, poses, settings.partSpacing);
+    for (const auto& [a, b] : spacingPairs) {
+        if (a >= document.parts.size() || b >= document.parts.size() || a >= poses.size() || b >= poses.size()) {
+            continue;
+        }
+        if (!partsCollide(document.parts[a], poses[a], document.parts[b], poses[b], settings.collisionTolerance) &&
+            !partsRespectSpacing(document.parts[a], poses[a], document.parts[b], poses[b], clearance)) {
+            ++summary.spacingFailureCount;
+        }
+    }
+
+    for (size_t i = 0; i < document.parts.size() && i < poses.size(); ++i) {
+        bool invalid = false;
+        if (!isPartInsideSheet(document.parts[i], poses[i], document.sheet, settings.collisionTolerance) ||
+            overlapsSheetHolesOrForbiddenZones(document.parts[i], poses[i], document.sheet, settings.collisionTolerance)) {
+            invalid = true;
+        }
+        if (!partRespectsSheetMargin(document.parts[i], poses[i], document.sheet, clearance)) {
+            invalid = true;
+            ++summary.sheetMarginFailureCount;
+        }
+        if (invalid) {
+            ++summary.invalidPartCount;
+        }
+    }
+
+    return summary;
+}
+
 } // namespace
 
 NestingEngine::NestingEngine() = default;
@@ -289,7 +346,7 @@ SolverResult NestingEngine::getBestResult() const {
     return bestResult_;
 }
 
-void NestingEngine::publishSnapshot(SolverPhase phase, double progress, const std::vector<Pose>& current, const std::vector<Pose>& best, size_t collisions, double overlap, double utilization, bool running, double elapsedSeconds) {
+void NestingEngine::publishSnapshot(SolverPhase phase, double progress, const std::vector<Pose>& current, const std::vector<Pose>& best, size_t collisions, double overlap, double utilization, bool running, double elapsedSeconds, size_t validationFailures, size_t invalidParts) {
     auto snapshot = std::make_shared<SolverSnapshot>();
     snapshot->currentPoses = current;
     snapshot->bestPoses = best;
@@ -299,6 +356,8 @@ void NestingEngine::publishSnapshot(SolverPhase phase, double progress, const st
     snapshot->overlapScore = overlap;
     snapshot->utilization = utilization;
     snapshot->elapsedSeconds = elapsedSeconds;
+    snapshot->validationFailureCount = validationFailures;
+    snapshot->invalidPartCount = invalidParts;
     snapshot->running = running;
 
     std::lock_guard<std::mutex> lock(snapshotMutex_);
@@ -507,29 +566,44 @@ void NestingEngine::run() {
         return;
     }
 
-    report = evaluateCurrent();
-    size_t sheetViolationCount = 0;
-    for (size_t i = 0; i < doc->parts.size() && i < poses.size(); ++i) {
-        if (!isPartInsideSheet(doc->parts[i], poses[i], doc->sheet) ||
-            overlapsSheetHolesOrForbiddenZones(doc->parts[i], poses[i], doc->sheet)) {
-            ++sheetViolationCount;
-        }
-    }
-    CollisionReport finalReport = report;
-    finalReport.collisionCount += sheetViolationCount;
-    publishIfDue(SolverPhase::FinalValidation, 0.97, finalReport, true);
+    const ValidationSummary validation = validateLayout(*doc, poses, settings, collisionEvaluator, workerPool, workerThreadCount);
+    publishSnapshot(
+        SolverPhase::FinalValidation,
+        0.97,
+        poses,
+        bestPoses,
+        validation.collisionReport.collisionCount,
+        validation.collisionReport.overlapScore,
+        layoutUtilization(*doc, poses, settings),
+        true,
+        elapsedSecondsSince(started),
+        validation.validationFailureCount(),
+        validation.invalidPartCount);
 
     const double utilization = layoutUtilization(*doc, poses, settings);
     {
         std::lock_guard<std::mutex> lock(resultMutex_);
         bestResult_.bestPoses = bestPoses;
-        bestResult_.collisionCount = finalReport.collisionCount;
-        bestResult_.overlapScore = finalReport.overlapScore;
+        bestResult_.collisionCount = validation.collisionReport.collisionCount;
+        bestResult_.overlapScore = validation.collisionReport.overlapScore;
         bestResult_.utilization = utilization;
-        bestResult_.valid = finalReport.collisionCount == 0;
+        bestResult_.validationFailureCount = validation.validationFailureCount();
+        bestResult_.invalidPartCount = validation.invalidPartCount;
+        bestResult_.valid = validation.validationFailureCount() == 0;
     }
 
-    publishSnapshot(SolverPhase::Done, 1.0, poses, bestPoses, finalReport.collisionCount, finalReport.overlapScore, utilization, false, elapsedSecondsSince(started));
+    publishSnapshot(
+        SolverPhase::Done,
+        1.0,
+        poses,
+        bestPoses,
+        validation.collisionReport.collisionCount,
+        validation.collisionReport.overlapScore,
+        utilization,
+        false,
+        elapsedSecondsSince(started),
+        validation.validationFailureCount(),
+        validation.invalidPartCount);
     running_.store(false);
 }
 

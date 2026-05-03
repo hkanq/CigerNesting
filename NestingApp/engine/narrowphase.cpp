@@ -14,7 +14,7 @@ CollisionReport NarrowPhase::evaluate(const std::vector<Part>& parts, const std:
         if (aabbScore <= 0.0) {
             continue;
         }
-        if (partsOverlap(parts[a], poses[a], parts[b], poses[b], tolerance)) {
+        if (partsCollide(parts[a], poses[a], parts[b], poses[b], tolerance)) {
             ++report.collisionCount;
             report.overlapScore += aabbScore;
             report.pairs.push_back({a, b});

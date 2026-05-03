@@ -28,6 +28,8 @@ struct SolverSnapshot {
     double overlapScore = 0.0;
     double utilization = 0.0;
     double elapsedSeconds = 0.0;
+    size_t validationFailureCount = 0;
+    size_t invalidPartCount = 0;
     bool running = false;
 };
 
@@ -36,6 +38,8 @@ struct SolverResult {
     size_t collisionCount = 0;
     double overlapScore = 0.0;
     double utilization = 0.0;
+    size_t validationFailureCount = 0;
+    size_t invalidPartCount = 0;
     bool valid = false;
 };
 

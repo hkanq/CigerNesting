@@ -1,85 +1,227 @@
 #include "geometry/collision.h"
 
-#include "geometry/winding.h"
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace nest {
 namespace {
+
+double sqr(double value) {
+    return value * value;
+}
+
+double clamp01(double value) {
+    return std::max(0.0, std::min(1.0, value));
+}
+
+bool samePoint(Vec2 a, Vec2 b, double eps) {
+    return distance(a, b) <= eps;
+}
+
+bool isClosedDuplicate(const std::vector<Vec2>& points, double eps) {
+    return points.size() > 2 && samePoint(points.front(), points.back(), eps);
+}
+
+size_t effectivePointCount(const std::vector<Vec2>& points, double eps) {
+    if (points.empty()) {
+        return 0;
+    }
+    return isClosedDuplicate(points, eps) ? points.size() - 1 : points.size();
+}
+
+AABB boundsOfPoints(const std::vector<Vec2>& points) {
+    AABB box;
+    for (const Vec2& point : points) {
+        box.include(point);
+    }
+    return box;
+}
 
 double orientation(Vec2 a, Vec2 b, Vec2 c) {
     return cross(b - a, c - a);
 }
 
-bool onSegment(Vec2 a, Vec2 b, Vec2 p, double tolerance) {
-    return std::abs(orientation(a, b, p)) <= tolerance &&
-        p.x >= std::min(a.x, b.x) - tolerance && p.x <= std::max(a.x, b.x) + tolerance &&
-        p.y >= std::min(a.y, b.y) - tolerance && p.y <= std::max(a.y, b.y) + tolerance;
+double pointSegmentDistance(Vec2 p, Vec2 a, Vec2 b) {
+    const Vec2 ab = b - a;
+    const double lengthSquared = ab.lengthSquared();
+    if (lengthSquared <= std::numeric_limits<double>::epsilon()) {
+        return distance(p, a);
+    }
+    const double t = clamp01(dot(p - a, ab) / lengthSquared);
+    return distance(p, a + ab * t);
 }
 
-AABB ringBounds(const Ring& ring) {
-    AABB box;
-    for (const auto& p : ring.points) {
-        box.include(p);
-    }
-    return box;
+bool pointOnSegment(Vec2 p, Vec2 a, Vec2 b, double eps) {
+    return pointSegmentDistance(p, a, b) <= eps &&
+        p.x >= std::min(a.x, b.x) - eps && p.x <= std::max(a.x, b.x) + eps &&
+        p.y >= std::min(a.y, b.y) - eps && p.y <= std::max(a.y, b.y) + eps;
 }
 
-} // namespace
-
-bool segmentsIntersect(Vec2 a, Vec2 b, Vec2 c, Vec2 d, double tolerance) {
-    const double o1 = orientation(a, b, c);
-    const double o2 = orientation(a, b, d);
-    const double o3 = orientation(c, d, a);
-    const double o4 = orientation(c, d, b);
-
-    if (((o1 > tolerance && o2 < -tolerance) || (o1 < -tolerance && o2 > tolerance)) &&
-        ((o3 > tolerance && o4 < -tolerance) || (o3 < -tolerance && o4 > tolerance))) {
-        return true;
+int orientationSign(Vec2 a, Vec2 b, Vec2 c, double eps) {
+    const double value = orientation(a, b, c);
+    const double scale = std::max(1.0, (b - a).length() * (c - a).length());
+    const double threshold = eps * scale;
+    if (value > threshold) {
+        return 1;
     }
-
-    return onSegment(a, b, c, tolerance) || onSegment(a, b, d, tolerance) ||
-           onSegment(c, d, a, tolerance) || onSegment(c, d, b, tolerance);
+    if (value < -threshold) {
+        return -1;
+    }
+    return 0;
 }
 
-bool ringsOverlap(const Ring& a, const Ring& b, double tolerance) {
-    if (a.points.size() < 2 || b.points.size() < 2) {
-        return false;
+template <typename Callback>
+void forEachSegment(const std::vector<Vec2>& points, double eps, Callback callback) {
+    const size_t count = effectivePointCount(points, eps);
+    if (count < 2) {
+        return;
     }
-
-    if (!ringBounds(a).expanded(tolerance).overlaps(ringBounds(b).expanded(tolerance))) {
-        return false;
-    }
-
-    for (size_t i = 0; i + 1 < a.points.size(); ++i) {
-        for (size_t j = 0; j + 1 < b.points.size(); ++j) {
-            if (segmentsIntersect(a.points[i], a.points[i + 1], b.points[j], b.points[j + 1], tolerance)) {
-                return true;
-            }
+    for (size_t i = 0; i < count; ++i) {
+        const Vec2 a = points[i];
+        const Vec2 b = points[(i + 1) % count];
+        if (!samePoint(a, b, eps)) {
+            callback(a, b);
         }
     }
+}
 
-    if (a.points.size() >= 3 && b.points.size() >= 3) {
-        if (isPointInRing(a.points.front(), b.points) || isPointInRing(b.points.front(), a.points)) {
+double segmentDistance(Vec2 a, Vec2 b, Vec2 c, Vec2 d, double eps) {
+    if (segmentsIntersect(a, b, c, d, eps)) {
+        return 0.0;
+    }
+    return std::min({
+        pointSegmentDistance(a, c, d),
+        pointSegmentDistance(b, c, d),
+        pointSegmentDistance(c, a, b),
+        pointSegmentDistance(d, a, b)
+    });
+}
+
+bool anyRingSegmentsIntersect(const std::vector<Vec2>& a, const std::vector<Vec2>& b, double eps) {
+    bool intersects = false;
+    forEachSegment(a, eps, [&](Vec2 a0, Vec2 a1) {
+        if (intersects) {
+            return;
+        }
+        forEachSegment(b, eps, [&](Vec2 b0, Vec2 b1) {
+            if (!intersects && segmentsIntersect(a0, a1, b0, b1, eps)) {
+                intersects = true;
+            }
+        });
+    });
+    return intersects;
+}
+
+bool ringContainsOrTouchesPoint(const std::vector<Vec2>& ring, Vec2 point, double eps) {
+    const PointLocation location = pointInRing(ring, point, eps);
+    return location == PointLocation::Inside || location == PointLocation::OnBoundary;
+}
+
+bool isPointInAnyZone(const std::vector<Ring>& zones, Vec2 point, double eps) {
+    for (const Ring& zone : zones) {
+        if (ringContainsOrTouchesPoint(zone.points, point, eps)) {
             return true;
         }
     }
-
     return false;
 }
 
-bool partsOverlap(const Part& a, const Pose& poseA, const Part& b, const Pose& poseB, double tolerance) {
-    const auto ringsA = transformRings(a.rings, poseA);
-    const auto ringsB = transformRings(b.rings, poseB);
-    for (const auto& ra : ringsA) {
-        if (ra.isHole) {
+Ring rectangularOuterWithMargin(const Sheet& sheet, double margin) {
+    const double left = sheet.origin.x + margin;
+    const double top = sheet.origin.y + margin;
+    const double right = sheet.origin.x + sheet.width - margin;
+    const double bottom = sheet.origin.y + sheet.height - margin;
+    Ring ring;
+    ring.points = {
+        {left, top},
+        {right, top},
+        {right, bottom},
+        {left, bottom},
+        {left, top}
+    };
+    ring.isHole = false;
+    ring.winding = 1;
+    return ring;
+}
+
+Ring usableSheetOuter(const Sheet& sheet) {
+    if (sheet.hasCustomProfile() && !sheet.profile().outerContour.points.empty()) {
+        return sheet.profile().outerContour;
+    }
+    return rectangularOuterWithMargin(sheet, sheet.margin);
+}
+
+Ring physicalSheetOuter(const Sheet& sheet) {
+    if (sheet.hasCustomProfile() && !sheet.profile().outerContour.points.empty()) {
+        return sheet.profile().outerContour;
+    }
+    return sheet.makeRectangularOuterContour();
+}
+
+const std::vector<Ring>& sheetHoles(const Sheet& sheet) {
+    return sheet.profile().holes;
+}
+
+const std::vector<Ring>& sheetForbiddenZones(const Sheet& sheet) {
+    return sheet.profile().forbiddenZones;
+}
+
+bool zoneOverlapsSolidPart(const TransformedPart& part, const Ring& zone, double eps) {
+    if (zone.points.size() < 3) {
+        return false;
+    }
+
+    const AABB zoneBounds = boundsOfPoints(zone.points);
+    if (!part.bounds.expanded(eps).overlaps(zoneBounds.expanded(eps))) {
+        return false;
+    }
+
+    for (const TransformedRing& ring : part.rings) {
+        if (ring.isHole || ring.points.size() < 3) {
             continue;
         }
-        for (const auto& rb : ringsB) {
-            if (rb.isHole) {
-                continue;
+        if (anyRingSegmentsIntersect(ring.points, zone.points, eps)) {
+            return true;
+        }
+        for (const Vec2& point : ring.points) {
+            if (ringContainsOrTouchesPoint(zone.points, point, eps)) {
+                return true;
             }
-            if (ringsOverlap(ra, rb, tolerance)) {
+        }
+    }
+
+    for (const Vec2& point : zone.points) {
+        if (pointInSolidArea(part, point, eps)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool zonesOverlapSolidPart(const TransformedPart& part, const std::vector<Ring>& zones, double eps) {
+    for (const Ring& zone : zones) {
+        if (zoneOverlapsSolidPart(part, zone, eps)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool anySolidSampleInsideOther(const TransformedPart& source, const TransformedPart& other, double eps) {
+    for (const TransformedRing& ring : source.rings) {
+        if (ring.isHole || ring.points.empty()) {
+            continue;
+        }
+        const size_t count = effectivePointCount(ring.points, eps);
+        for (size_t i = 0; i < count; ++i) {
+            const Vec2 a = ring.points[i];
+            const Vec2 b = ring.points[(i + 1) % count];
+            if (pointInSolidArea(other, a, eps)) {
+                return true;
+            }
+            const Vec2 mid = (a + b) * 0.5;
+            if (pointInSolidArea(other, mid, eps)) {
                 return true;
             }
         }
@@ -87,75 +229,284 @@ bool partsOverlap(const Part& a, const Pose& poseA, const Part& b, const Pose& p
     return false;
 }
 
-bool isPartInsideSheet(const Part& part, const Pose& pose, const Sheet& sheet) {
-    const auto rings = transformRings(part.rings, pose);
+double minRingDistance(const std::vector<Vec2>& a, const std::vector<Vec2>& b, double eps) {
+    double best = std::numeric_limits<double>::max();
+    forEachSegment(a, eps, [&](Vec2 a0, Vec2 a1) {
+        forEachSegment(b, eps, [&](Vec2 b0, Vec2 b1) {
+            best = std::min(best, segmentDistance(a0, a1, b0, b1, eps));
+        });
+    });
+    return best;
+}
 
-    if (!sheet.hasCustomProfile()) {
-        const AABB box = transformedBounds(part, pose);
-        const double left = sheet.origin.x + sheet.margin;
-        const double top = sheet.origin.y + sheet.margin;
-        const double right = sheet.origin.x + sheet.width - sheet.margin;
-        const double bottom = sheet.origin.y + sheet.height - sheet.margin;
-        return box.min.x >= left - 1e-6 && box.min.y >= top - 1e-6 &&
-            box.max.x <= right + 1e-6 && box.max.y <= bottom + 1e-6;
-    }
-
-    const Ring fallbackOuter = sheet.makeRectangularOuterContour();
-    const Ring& outer = sheet.profile().outerContour.points.empty() ? fallbackOuter : sheet.profile().outerContour;
-
-    for (const auto& ring : rings) {
-        if (ring.isHole) {
+double minBoundaryDistance(const TransformedPart& a, const TransformedPart& b, double eps) {
+    double best = std::numeric_limits<double>::max();
+    for (const TransformedRing& ringA : a.rings) {
+        if (ringA.points.size() < 2) {
             continue;
         }
-        for (const auto& point : ring.points) {
-            bool onBoundary = false;
-            for (size_t i = 0; i + 1 < outer.points.size(); ++i) {
-                if (onSegment(outer.points[i], outer.points[i + 1], point, 1e-6)) {
-                    onBoundary = true;
-                    break;
-                }
+        for (const TransformedRing& ringB : b.rings) {
+            if (ringB.points.size() < 2) {
+                continue;
             }
-            if (!onBoundary && !isPointInRing(point, outer.points)) {
+            best = std::min(best, minRingDistance(ringA.points, ringB.points, eps));
+        }
+    }
+    return best;
+}
+
+double minBoundaryDistanceToRing(const TransformedPart& part, const Ring& ring, double eps) {
+    if (ring.points.size() < 2) {
+        return std::numeric_limits<double>::max();
+    }
+    double best = std::numeric_limits<double>::max();
+    for (const TransformedRing& partRing : part.rings) {
+        if (partRing.points.size() < 2) {
+            continue;
+        }
+        best = std::min(best, minRingDistance(partRing.points, ring.points, eps));
+    }
+    return best;
+}
+
+bool transformedPartInsideSheet(const TransformedPart& part, const Sheet& sheet, double eps) {
+    const Ring outer = usableSheetOuter(sheet);
+    if (outer.points.size() < 3) {
+        return false;
+    }
+
+    for (const TransformedRing& ring : part.rings) {
+        if (ring.isHole || ring.points.size() < 3) {
+            continue;
+        }
+
+        const size_t count = effectivePointCount(ring.points, eps);
+        for (size_t i = 0; i < count; ++i) {
+            const Vec2 point = ring.points[i];
+            if (pointInRing(outer.points, point, eps) == PointLocation::Outside) {
+                return false;
+            }
+            if (isPointInAnyZone(sheetHoles(sheet), point, eps) ||
+                isPointInAnyZone(sheetForbiddenZones(sheet), point, eps)) {
+                return false;
+            }
+
+            const Vec2 next = ring.points[(i + 1) % count];
+            const Vec2 mid = (point + next) * 0.5;
+            if (pointInRing(outer.points, mid, eps) == PointLocation::Outside) {
+                return false;
+            }
+            if (isPointInAnyZone(sheetHoles(sheet), mid, eps) ||
+                isPointInAnyZone(sheetForbiddenZones(sheet), mid, eps)) {
                 return false;
             }
         }
     }
 
+    if (zonesOverlapSolidPart(part, sheetHoles(sheet), eps) ||
+        zonesOverlapSolidPart(part, sheetForbiddenZones(sheet), eps)) {
+        return false;
+    }
+
     return true;
 }
 
-bool overlapsSheetHolesOrForbiddenZones(const Part& part, const Pose& pose, const Sheet& sheet) {
-    if (!sheet.hasCustomProfile()) {
+} // namespace
+
+bool segmentsIntersect(Vec2 a, Vec2 b, Vec2 c, Vec2 d, double eps) {
+    if (!AABB::fromMinMax({std::min(a.x, b.x), std::min(a.y, b.y)}, {std::max(a.x, b.x), std::max(a.y, b.y)})
+             .expanded(eps)
+             .overlaps(AABB::fromMinMax({std::min(c.x, d.x), std::min(c.y, d.y)}, {std::max(c.x, d.x), std::max(c.y, d.y)}).expanded(eps))) {
         return false;
     }
 
-    const auto rings = transformRings(part.rings, pose);
-    auto overlapsAnyZone = [&](const Ring& zone) {
-        if (zone.points.size() < 3) {
+    if (pointOnSegment(a, c, d, eps) || pointOnSegment(b, c, d, eps) ||
+        pointOnSegment(c, a, b, eps) || pointOnSegment(d, a, b, eps)) {
+        return true;
+    }
+
+    const int o1 = orientationSign(a, b, c, eps);
+    const int o2 = orientationSign(a, b, d, eps);
+    const int o3 = orientationSign(c, d, a, eps);
+    const int o4 = orientationSign(c, d, b, eps);
+    return o1 != 0 && o2 != 0 && o3 != 0 && o4 != 0 && o1 != o2 && o3 != o4;
+}
+
+PointLocation pointInRing(const std::vector<Vec2>& ring, Vec2 p, double eps) {
+    const size_t count = effectivePointCount(ring, eps);
+    if (count < 3) {
+        return PointLocation::Outside;
+    }
+
+    for (size_t i = 0; i < count; ++i) {
+        if (pointOnSegment(p, ring[i], ring[(i + 1) % count], eps)) {
+            return PointLocation::OnBoundary;
+        }
+    }
+
+    bool inside = false;
+    for (size_t i = 0, j = count - 1; i < count; j = i++) {
+        const Vec2 pi = ring[i];
+        const Vec2 pj = ring[j];
+        const bool crosses = ((pi.y > p.y) != (pj.y > p.y)) &&
+            (p.x < (pj.x - pi.x) * (p.y - pi.y) / ((pj.y - pi.y) + 1e-30) + pi.x);
+        if (crosses) {
+            inside = !inside;
+        }
+    }
+
+    return inside ? PointLocation::Inside : PointLocation::Outside;
+}
+
+PointLocation pointInRing(const Ring& ring, Vec2 p, double eps) {
+    return pointInRing(ring.points, p, eps);
+}
+
+bool ringsOverlapOrTouch(const std::vector<Vec2>& a, const std::vector<Vec2>& b, double eps) {
+    if (effectivePointCount(a, eps) < 3 || effectivePointCount(b, eps) < 3) {
+        return false;
+    }
+    if (!boundsOfPoints(a).expanded(eps).overlaps(boundsOfPoints(b).expanded(eps))) {
+        return false;
+    }
+    if (anyRingSegmentsIntersect(a, b, eps)) {
+        return true;
+    }
+    return pointInRing(b, a.front(), eps) != PointLocation::Outside ||
+        pointInRing(a, b.front(), eps) != PointLocation::Outside;
+}
+
+bool ringsOverlapOrTouch(const TransformedRing& a, const TransformedRing& b, double eps) {
+    if (!a.bounds.expanded(eps).overlaps(b.bounds.expanded(eps))) {
+        return false;
+    }
+    return ringsOverlapOrTouch(a.points, b.points, eps);
+}
+
+bool pointInSolidArea(const TransformedPart& part, Vec2 p, double eps) {
+    bool inOuter = false;
+    for (const TransformedRing& ring : part.rings) {
+        if (ring.isHole) {
+            continue;
+        }
+        const PointLocation location = pointInRing(ring.points, p, eps);
+        if (location == PointLocation::Inside || location == PointLocation::OnBoundary) {
+            inOuter = true;
+            break;
+        }
+    }
+    if (!inOuter) {
+        return false;
+    }
+
+    for (const TransformedRing& ring : part.rings) {
+        if (!ring.isHole) {
+            continue;
+        }
+        const PointLocation location = pointInRing(ring.points, p, eps);
+        if (location == PointLocation::Inside) {
             return false;
         }
-        for (const auto& ring : rings) {
-            if (ring.isHole) {
+        if (location == PointLocation::OnBoundary) {
+            return true;
+        }
+    }
+    return true;
+}
+
+bool partsCollide(const Part& a, const Pose& poseA, const Part& b, const Pose& poseB, double eps) {
+    const TransformedPart partA = transformPart(a, poseA, 0);
+    const TransformedPart partB = transformPart(b, poseB, 1);
+    if (!partA.bounds.expanded(eps).overlaps(partB.bounds.expanded(eps))) {
+        return false;
+    }
+
+    for (const TransformedRing& ringA : partA.rings) {
+        if (ringA.points.size() < 2) {
+            continue;
+        }
+        for (const TransformedRing& ringB : partB.rings) {
+            if (ringB.points.size() < 2) {
                 continue;
             }
-            if (ringsOverlap(ring, zone, 1e-6)) {
+            if (ringA.bounds.expanded(eps).overlaps(ringB.bounds.expanded(eps)) &&
+                anyRingSegmentsIntersect(ringA.points, ringB.points, eps)) {
                 return true;
             }
         }
-        return false;
-    };
+    }
 
-    for (const auto& hole : sheet.profile().holes) {
-        if (overlapsAnyZone(hole)) {
-            return true;
+    return anySolidSampleInsideOther(partA, partB, eps) || anySolidSampleInsideOther(partB, partA, eps);
+}
+
+bool partsRespectSpacing(const Part& a, const Pose& poseA, const Part& b, const Pose& poseB, const ClearanceSettings& clearance) {
+    const double eps = clearance.tolerance;
+    if (partsCollide(a, poseA, b, poseB, eps)) {
+        return false;
+    }
+    if (clearance.partSpacing <= eps) {
+        return true;
+    }
+
+    const TransformedPart partA = transformPart(a, poseA, 0);
+    const TransformedPart partB = transformPart(b, poseB, 1);
+    if (!partA.bounds.expanded(clearance.partSpacing + eps).overlaps(partB.bounds.expanded(clearance.partSpacing + eps))) {
+        return true;
+    }
+    return minBoundaryDistance(partA, partB, eps) + eps >= clearance.partSpacing;
+}
+
+bool isPartInsideSheet(const Part& part, const Pose& pose, const Sheet& sheet, double eps) {
+    return transformedPartInsideSheet(transformPart(part, pose), sheet, eps);
+}
+
+bool overlapsSheetHolesOrForbiddenZones(const Part& part, const Pose& pose, const Sheet& sheet, double eps) {
+    const TransformedPart transformed = transformPart(part, pose);
+    return zonesOverlapSolidPart(transformed, sheetHoles(sheet), eps) ||
+        zonesOverlapSolidPart(transformed, sheetForbiddenZones(sheet), eps);
+}
+
+bool partRespectsSheetMargin(const Part& part, const Pose& pose, const Sheet& sheet, const ClearanceSettings& clearance) {
+    const double eps = clearance.tolerance;
+    if (!isPartInsideSheet(part, pose, sheet, eps)) {
+        return false;
+    }
+    if (clearance.sheetMargin <= eps) {
+        return true;
+    }
+
+    const TransformedPart transformed = transformPart(part, pose);
+    const Ring outer = physicalSheetOuter(sheet);
+    if (minBoundaryDistanceToRing(transformed, outer, eps) + eps < clearance.sheetMargin) {
+        return false;
+    }
+    for (const Ring& hole : sheetHoles(sheet)) {
+        if (minBoundaryDistanceToRing(transformed, hole, eps) + eps < clearance.sheetMargin) {
+            return false;
         }
     }
-    for (const auto& zone : sheet.profile().forbiddenZones) {
-        if (overlapsAnyZone(zone)) {
-            return true;
+    for (const Ring& zone : sheetForbiddenZones(sheet)) {
+        if (minBoundaryDistanceToRing(transformed, zone, eps) + eps < clearance.sheetMargin) {
+            return false;
         }
     }
-    return false;
+    return true;
+}
+
+bool ringsOverlap(const Ring& a, const Ring& b, double tolerance) {
+    return ringsOverlapOrTouch(a.points, b.points, tolerance);
+}
+
+bool partsOverlap(const Part& a, const Pose& poseA, const Part& b, const Pose& poseB, double tolerance) {
+    return partsCollide(a, poseA, b, poseB, tolerance);
+}
+
+bool isPartInsideSheet(const Part& part, const Pose& pose, const Sheet& sheet) {
+    return isPartInsideSheet(part, pose, sheet, 1e-6);
+}
+
+bool overlapsSheetHolesOrForbiddenZones(const Part& part, const Pose& pose, const Sheet& sheet) {
+    return overlapsSheetHolesOrForbiddenZones(part, pose, sheet, 1e-6);
 }
 
 double aabbOverlapArea(const AABB& a, const AABB& b) {

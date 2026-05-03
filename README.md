@@ -102,9 +102,29 @@ NestingApp\resources\app_icon.ico
 
 The icon is compiled into `CigerNesting.exe` and loaded for the main window/taskbar class.
 
+## Geometry Validation Layer
+
+The first production-oriented contour validation layer is active:
+
+- world-space transformed rings are produced through `geometry/transformed_shape.*`
+- segment intersection handles proper crossing, endpoint touching, collinear overlap, and tolerance
+- point-in-ring returns `Outside`, `Inside`, or `OnBoundary`
+- part collision is hole-aware: solid area is treated as outer contours minus holes
+- parts may occupy another part's hole as long as they do not touch/intersect solid material
+- sheet containment validates rectangular sheets, custom sheet outer contours, sheet holes, and forbidden zones
+- clearance has a real API through `ClearanceSettings`, `partsRespectSpacing`, and `partRespectsSheetMargin`
+
+The current clearance implementation is conservative and distance-based. It intentionally does not yet perform true polygon offsetting, but the interface is designed so a future offset engine can replace the internals without changing solver/UI boundaries.
+
+Geometry smoke test target:
+
+```powershell
+build\NestingApp\Release\CigerNestingGeometryCollisionSmoke.exe
+```
+
 ## Known Gaps
 
-- Current spacing is still based on simple collision/AABB checks, not true polygon offset.
+- Clearance is conservative segment-distance validation, not true polygon offset.
 - DXF/PLT import support is intentionally small and ASCII-oriented.
 - Custom sheet containment is a first validation interface, not a full polygon offset/clearance implementation.
 - User placement points are model/engine-ready, but canvas click editing is not enabled yet.

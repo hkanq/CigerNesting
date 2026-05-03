@@ -24,8 +24,19 @@ target_compile_definitions(CigerNesting PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNI
 
 target_link_libraries(CigerNesting PRIVATE user32 gdi32 comdlg32 shell32)
 
+add_executable(CigerNestingGeometryCollisionSmoke
+    tests/geometry_collision_smoke.cpp
+    geometry/collision.cpp
+    geometry/transformed_shape.cpp
+)
+
+target_include_directories(CigerNestingGeometryCollisionSmoke PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_definitions(CigerNestingGeometryCollisionSmoke PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
+
 if(MSVC)
     target_compile_options(CigerNesting PRIVATE /W4 /permissive- /EHsc /utf-8)
+    target_compile_options(CigerNestingGeometryCollisionSmoke PRIVATE /W4 /permissive- /EHsc /utf-8)
 else()
     target_compile_options(CigerNesting PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(CigerNestingGeometryCollisionSmoke PRIVATE -Wall -Wextra -Wpedantic)
 endif()
