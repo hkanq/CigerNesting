@@ -47,6 +47,7 @@ add_executable(CigerNestingSolverQualitySmoke
     geometry/transformed_shape.cpp
     geometry/spatial_grid.cpp
     engine/acceptance.cpp
+    engine/adaptive_optimizer.cpp
     engine/broadphase.cpp
     engine/compression.cpp
     engine/contact_packing.cpp
@@ -104,6 +105,7 @@ add_executable(CigerNestingPerformanceStressSmoke
     geometry/spatial_grid.cpp
     geometry/transformed_shape.cpp
     engine/acceptance.cpp
+    engine/adaptive_optimizer.cpp
     engine/broadphase.cpp
     engine/compression.cpp
     engine/contact_packing.cpp
@@ -230,6 +232,7 @@ add_executable(CigerNestingBenchmarkRunner
     geometry/transformed_shape.cpp
     geometry/spatial_grid.cpp
     engine/acceptance.cpp
+    engine/adaptive_optimizer.cpp
     engine/broadphase.cpp
     engine/compression.cpp
     engine/contact_packing.cpp
@@ -272,6 +275,7 @@ add_executable(CigerNestingLargeScaleQualitySmoke
     geometry/transformed_shape.cpp
     geometry/spatial_grid.cpp
     engine/acceptance.cpp
+    engine/adaptive_optimizer.cpp
     engine/broadphase.cpp
     engine/compression.cpp
     engine/contact_packing.cpp
@@ -314,6 +318,7 @@ add_executable(CigerNestingSolver500MaxSpacing0Smoke
     geometry/transformed_shape.cpp
     geometry/spatial_grid.cpp
     engine/acceptance.cpp
+    engine/adaptive_optimizer.cpp
     engine/broadphase.cpp
     engine/compression.cpp
     engine/contact_packing.cpp
@@ -347,6 +352,7 @@ add_executable(CigerNestingConvergenceSmoke
     geometry/spatial_grid.cpp
     geometry/transformed_shape.cpp
     engine/acceptance.cpp
+    engine/adaptive_optimizer.cpp
     engine/broadphase.cpp
     engine/compression.cpp
     engine/contact_packing.cpp
@@ -381,6 +387,7 @@ add_executable(CigerNestingContourInterlockSmoke
     geometry/spatial_grid.cpp
     geometry/transformed_shape.cpp
     engine/acceptance.cpp
+    engine/adaptive_optimizer.cpp
     engine/broadphase.cpp
     engine/compression.cpp
     engine/contact_packing.cpp

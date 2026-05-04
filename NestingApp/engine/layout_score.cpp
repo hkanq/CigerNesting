@@ -18,7 +18,7 @@ constexpr double kSpacingPenalty = 1000000.0;
 constexpr double kUsedAreaPenalty = 1.0;
 constexpr double kUtilizationReward = 10000.0;
 constexpr double kCompactnessReward = 0.02;
-constexpr double kCavityReward = 75000.0;
+constexpr double kCavityReward = 500000.0;
 constexpr double kContactReward = 450.0;
 
 double safeSheetArea(const Document& document) {

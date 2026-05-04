@@ -81,7 +81,7 @@ SolverResult NestingEngine::getBestResult() const {
     return bestResult_;
 }
 
-void NestingEngine::publishSnapshot(SolverPhase phase, double progress, const std::vector<Pose>& current, const std::vector<Pose>& best, size_t collisions, double overlap, double utilization, bool running, double elapsedSeconds, size_t validationFailures, size_t invalidParts, const SolverStats& stats) {
+void NestingEngine::publishSnapshot(SolverPhase phase, SolverStrategy strategy, double progress, const std::vector<Pose>& current, const std::vector<Pose>& best, size_t collisions, double overlap, double utilization, bool running, double elapsedSeconds, size_t validationFailures, size_t invalidParts, const SolverStats& stats) {
     auto snapshot = std::make_shared<SolverSnapshot>();
     snapshot->currentPoses = current;
     snapshot->bestPoses = best;
@@ -94,6 +94,7 @@ void NestingEngine::publishSnapshot(SolverPhase phase, double progress, const st
     snapshot->validationFailureCount = validationFailures;
     snapshot->invalidPartCount = invalidParts;
     snapshot->stats = stats;
+    snapshot->currentStrategy = strategy;
     snapshot->running = running;
 
     std::lock_guard<std::mutex> lock(snapshotMutex_);
@@ -106,7 +107,7 @@ void NestingEngine::run() {
     EngineSettings settings = settings_;
 
     if (doc == nullptr || doc->parts.empty()) {
-        publishSnapshot(SolverPhase::Done, 1.0, {}, {}, 0, 0.0, 0.0, false, elapsedSecondsSince(started));
+        publishSnapshot(SolverPhase::Done, SolverStrategy::Done, 1.0, {}, {}, 0, 0.0, 0.0, false, elapsedSecondsSince(started));
         running_.store(false);
         return;
     }
@@ -117,7 +118,7 @@ void NestingEngine::run() {
     LayoutState latestCurrent;
     LayoutState latestBest;
     SolverStats latestStats;
-    auto publishState = [&](SolverPhase phase, double progress, const LayoutState& current, const LayoutState& best, bool force, bool solverRunning, const SolverStats& stats) {
+    auto publishState = [&](SolverPhase phase, SolverStrategy strategy, double progress, const LayoutState& current, const LayoutState& best, bool force, bool solverRunning, const SolverStats& stats) {
         const auto now = Clock::now();
         if (!force && now - lastSnapshotTime < snapshotInterval) {
             return;
@@ -129,6 +130,7 @@ void NestingEngine::run() {
         const LayoutState& display = best.valid() && !best.poses.empty() ? best : current;
         publishSnapshot(
             phase,
+            strategy,
             progress,
             display.poses,
             best.poses,
@@ -144,16 +146,16 @@ void NestingEngine::run() {
             stats);
     };
 
-    publishSnapshot(SolverPhase::PrepareGeometry, 0.02, {}, {}, 0, 0.0, 0.0, true, elapsedSecondsSince(started));
+    publishSnapshot(SolverPhase::PrepareGeometry, SolverStrategy::AdaptiveSearch, 0.02, {}, {}, 0, 0.0, 0.0, true, elapsedSecondsSince(started));
     if (stopRequested_.load()) {
-        publishSnapshot(SolverPhase::Stopped, 1.0, {}, {}, 0, 0.0, 0.0, false, elapsedSecondsSince(started));
+        publishSnapshot(SolverPhase::Stopped, SolverStrategy::Idle, 1.0, {}, {}, 0, 0.0, 0.0, false, elapsedSecondsSince(started));
         running_.store(false);
         return;
     }
 
     MultiStartSolver solver;
     const LayoutState best = solver.solve(*doc, settings, stopRequested_, [&](const SolverProgress& progress) {
-        publishState(progress.phase, progress.progress, progress.current, progress.best, false, true, progress.stats);
+        publishState(progress.phase, progress.currentStrategy, progress.progress, progress.current, progress.best, false, true, progress.stats);
     });
     latestStats = solver.lastStats();
 
@@ -165,7 +167,7 @@ void NestingEngine::run() {
     }
     LayoutState finalCurrent = finalBest.valid() ? finalBest : (latestCurrent.poses.empty() ? finalBest : latestCurrent);
     const SolverPhase finalPhase = stopRequested_.load() ? SolverPhase::Stopped : SolverPhase::FinalValidation;
-    publishState(finalPhase, stopRequested_.load() ? 1.0 : 0.97, finalCurrent, finalBest, true, !stopRequested_.load(), latestStats);
+    publishState(finalPhase, SolverStrategy::Done, stopRequested_.load() ? 1.0 : 0.97, finalCurrent, finalBest, true, !stopRequested_.load(), latestStats);
 
     const double utilization = finalBest.utilization;
     {
@@ -179,6 +181,7 @@ void NestingEngine::run() {
             static_cast<size_t>(finalBest.sheetPenalty > 0.0 ? 1 : 0);
         bestResult_.invalidPartCount = static_cast<size_t>(std::max(0, finalBest.invalidPartCount));
         bestResult_.stats = latestStats;
+        bestResult_.currentStrategy = finalBest.valid() ? SolverStrategy::Done : SolverStrategy::Idle;
         bestResult_.valid = finalBest.valid();
     }
 
@@ -190,6 +193,7 @@ void NestingEngine::run() {
 
     publishSnapshot(
         terminalPhase,
+        finalValid ? SolverStrategy::Done : SolverStrategy::Idle,
         1.0,
         terminalDisplay.poses,
         finalBest.poses,

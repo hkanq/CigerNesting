@@ -1,5 +1,6 @@
 #include "engine/multi_start_solver.h"
 
+#include "engine/adaptive_optimizer.h"
 #include "engine/compression.h"
 #include "engine/contact_packing.h"
 #include "engine/convergence.h"
@@ -438,272 +439,28 @@ LayoutState MultiStartSolver::solve(
         refreshTimingStats(aggregateStats, started);
         lastStats_ = aggregateStats;
         if (callback) {
-            callback({SolverPhase::NoValidLayout, 1.0, best, LayoutState{}, elapsedSeconds(started), aggregateStats});
+            callback({SolverPhase::NoValidLayout, SolverStrategy::Idle, 1.0, best, LayoutState{}, elapsedSeconds(started), aggregateStats});
         }
         return best;
     }
     LayoutState current = best;
     if (callback) {
-        callback({SolverPhase::InitialPlacement, 0.12, current, best, elapsedSeconds(started), aggregateStats});
+        callback({SolverPhase::InitialPlacement, SolverStrategy::AdaptiveSearch, 0.12, current, best, elapsedSeconds(started), aggregateStats});
     }
 
-    const auto strategies = strategySchedule(settings.placementStrategy);
+    aggregateStats.workerCount = 1;
+    aggregateStats.attemptsStarted = 1;
+    AdaptiveUnifiedOptimizer optimizer;
     const double totalLimit = effectiveSafetyTimeLimitSeconds(settings, document.parts.size());
-    const double ultraReserve = ultraReserveSeconds(settings, totalLimit);
-    const double searchLimit = std::max(0.05, totalLimit - ultraReserve);
-    const size_t attemptThreads = settings.deterministic ? 1u : std::max<size_t>(1, ParallelCollisionEvaluator::resolveThreadCount(settings));
-    const size_t maxInflightAttempts = std::max<size_t>(attemptThreads, attemptThreads * inflightMultiplier(settings.performanceProfile));
-    const int maxAttempts = maxAttemptsForProfile(settings, attemptThreads, document.parts.size());
-    ConvergenceTracker convergence(criteriaForSettings(settings, document.parts.size()));
-    convergence.reset(best, aggregateStats, started);
-    aggregateStats.workerCount = attemptThreads;
-    std::atomic_bool searchStop{false};
-    std::thread deadlineThread([&]() {
-        while (!searchStop.load() && !stopRequested.load() && elapsedSeconds(started) < searchLimit) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    best = optimizer.optimize(document, settings, std::move(best), globalPenalty, stopRequested, aggregateStats, [&](SolverStrategy strategy, const LayoutState& optimizerCurrent, const LayoutState& optimizerBest, const SolverStats& stats) {
+        if (!callback) {
+            return;
         }
-        searchStop.store(true);
+        const double progress = std::min(0.96, 0.12 + elapsedSeconds(started) / std::max(0.25, totalLimit) * 0.82);
+        callback({SolverPhase::Exploration, strategy, progress, optimizerCurrent, optimizerBest, elapsedSeconds(started), stats});
     });
-    WorkerPool attemptPool(attemptThreads);
-    std::vector<std::future<AttemptResult>> futures;
-    int nextAttempt = 0;
-
-    auto launchAttempt = [&](int attempt) {
-        const PlacementStrategy strategy = strategies[static_cast<size_t>(attempt) % strategies.size()];
-        const int orderMode = attempt % 4;
-        const unsigned int seed = baseSeed ^ (static_cast<unsigned int>(attempt + 1) * 2654435761u);
-        const PenaltySystem globalSnapshot = globalPenalty;
-        ++aggregateStats.attemptsStarted;
-        futures.push_back(attemptPool.enqueue([&, strategy, orderMode, seed, attempt, globalSnapshot]() {
-            SolverStats localStats;
-            PenaltySystem attemptPenalty;
-            OverlapResolver resolver;
-            Compression compression;
-            ContactPacking contactPacking;
-            EscapeSearch escapeSearch;
-            GapFilling gapFilling;
-            Rearrangement rearrangement;
-            SmallPartFiller smallPartFiller;
-            RegionRepack regionRepack;
-            LayoutScore localScorer;
-            EngineSettings attemptSettings = settings;
-            if (settings.allowMirroring && attempt % 2 == 0) {
-                attemptSettings.allowMirroring = false;
-            }
-            const size_t candidateThreads = std::max<size_t>(1, ParallelCollisionEvaluator::resolveThreadCount(attemptSettings) / std::max<size_t>(1, attemptThreads));
-            WorkerPool candidatePool(candidateThreads);
-
-            LayoutState state = rowBaseline(document, attemptSettings, strategy, seed, orderMode);
-            if (searchStop.load() || stopRequested.load()) {
-                return AttemptResult{std::move(state), localStats, attempt, strategy, seed};
-            }
-            state = resolver.resolve(document, attemptSettings, std::move(state), attemptPenalty, candidatePool, searchStop, seed, &localStats);
-            if (state.collisionCount == 0 && state.invalidPartCount == 0 && !stopRequested.load() &&
-                hasPhaseBudget(started, searchLimit, document.parts.size(), attemptSettings.performanceProfile, 0.50)) {
-                state = compression.compressByScore(document, attemptSettings, std::move(state), attemptPenalty, &localStats, &searchStop);
-            }
-            if (state.valid() && !searchStop.load() && !stopRequested.load() &&
-                hasPhaseBudget(started, searchLimit, document.parts.size(), attemptSettings.performanceProfile, 0.80)) {
-                state = contactPacking.improve(document, attemptSettings, std::move(state), attemptPenalty, searchStop, &localStats);
-            }
-            if (state.valid() && !searchStop.load() && !stopRequested.load() &&
-                hasPhaseBudget(started, searchLimit, document.parts.size(), attemptSettings.performanceProfile, 1.00)) {
-                state = smallPartFiller.fill(document, attemptSettings, std::move(state), attemptPenalty, searchStop, &localStats);
-            }
-            if (state.valid() && !searchStop.load() && !stopRequested.load() &&
-                hasPhaseBudget(started, searchLimit, document.parts.size(), attemptSettings.performanceProfile, 1.00)) {
-                state = gapFilling.fillGaps(document, attemptSettings, std::move(state), attemptPenalty, searchStop, &localStats);
-            }
-            if (state.valid() && !searchStop.load() && !stopRequested.load() &&
-                hasPhaseBudget(started, searchLimit, document.parts.size(), attemptSettings.performanceProfile, 1.00)) {
-                state = regionRepack.improve(document, attemptSettings, std::move(state), attemptPenalty, searchStop, &localStats);
-            }
-            if (state.valid() && !searchStop.load() && !stopRequested.load() &&
-                hasPhaseBudget(started, searchLimit, document.parts.size(), attemptSettings.performanceProfile, 1.00)) {
-                state = rearrangement.improve(document, attemptSettings, std::move(state), attemptPenalty, searchStop, &localStats);
-            }
-            if (state.valid() && !searchStop.load() && !stopRequested.load() &&
-                hasPhaseBudget(started, searchLimit, document.parts.size(), attemptSettings.performanceProfile, 1.25) &&
-                (attemptSettings.performanceProfile != PerformanceProfile::Fast || attempt % 4 == 0)) {
-                LayoutState escaped = escapeSearch.escape(document, attemptSettings, state, attemptPenalty, searchStop, seed ^ 0x51f15eedu, &localStats);
-                if (escaped.valid() && posesDiffer(escaped.poses, state.poses)) {
-                    state = resolver.resolve(document, attemptSettings, std::move(escaped), attemptPenalty, candidatePool, searchStop, seed ^ 0x7f4a7c15u, &localStats);
-                    if (state.valid() && !searchStop.load() && !stopRequested.load()) {
-                        if (hasPhaseBudget(started, searchLimit, document.parts.size(), attemptSettings.performanceProfile, 0.50)) {
-                            state = compression.compressByScore(document, attemptSettings, std::move(state), attemptPenalty, &localStats, &searchStop);
-                        }
-                        if (hasPhaseBudget(started, searchLimit, document.parts.size(), attemptSettings.performanceProfile, 0.80)) {
-                            state = contactPacking.improve(document, attemptSettings, std::move(state), attemptPenalty, searchStop, &localStats);
-                        }
-                        if (hasPhaseBudget(started, searchLimit, document.parts.size(), attemptSettings.performanceProfile, 1.00)) {
-                            state = smallPartFiller.fill(document, attemptSettings, std::move(state), attemptPenalty, searchStop, &localStats);
-                        }
-                        if (hasPhaseBudget(started, searchLimit, document.parts.size(), attemptSettings.performanceProfile, 1.00)) {
-                            state = gapFilling.fillGaps(document, attemptSettings, std::move(state), attemptPenalty, searchStop, &localStats);
-                        }
-                        if (hasPhaseBudget(started, searchLimit, document.parts.size(), attemptSettings.performanceProfile, 1.00)) {
-                            state = regionRepack.improve(document, attemptSettings, std::move(state), attemptPenalty, searchStop, &localStats);
-                        }
-                        if (hasPhaseBudget(started, searchLimit, document.parts.size(), attemptSettings.performanceProfile, 1.00)) {
-                            state = rearrangement.improve(document, attemptSettings, std::move(state), attemptPenalty, searchStop, &localStats);
-                        }
-                    }
-                }
-            }
-            state = localScorer.evaluate(document, settings, state.poses, &attemptPenalty, &globalSnapshot, 0.10);
-            return AttemptResult{std::move(state), localStats, attempt, strategy, seed};
-        }));
-    };
-
-    while (!stopRequested.load() && !searchStop.load() && futures.size() < maxInflightAttempts && nextAttempt < maxAttempts && elapsedSeconds(started) < searchLimit) {
-        launchAttempt(nextAttempt++);
-    }
-
-    while (!futures.empty() && !stopRequested.load()) {
-        bool completedAny = false;
-        for (auto it = futures.begin(); it != futures.end();) {
-            if (it->wait_for(std::chrono::milliseconds(0)) == std::future_status::ready) {
-                AttemptResult result = it->get();
-                it = futures.erase(it);
-                completedAny = true;
-                current = result.state;
-                ++aggregateStats.attemptsCompleted;
-                mergeStats(aggregateStats, result.stats);
-
-                for (const CollisionPair& pair : current.collisionPairs) {
-                    globalPenalty.observeCollision(pair.a, pair.b);
-                }
-
-                if (current.valid() && current.totalScore < best.totalScore) {
-                    best = current;
-                    ++aggregateStats.bestUpdates;
-                }
-                convergence.observeAttempt(best, aggregateStats, Clock::now());
-
-                if (callback) {
-                    const double progressBase = std::min(0.84, 0.18 + elapsedSeconds(started) / searchLimit * 0.66);
-                    refreshTimingStats(aggregateStats, started);
-                    const SolverPhase phase = result.stats.escapeAccepted > 0 ? SolverPhase::Escape :
-                        current.valid() ? SolverPhase::Rearrangement :
-                        (current.collisionCount == 0 ? SolverPhase::Compression : SolverPhase::CollisionResolution);
-                    callback({phase, progressBase, current, best, elapsedSeconds(started), aggregateStats});
-                }
-                if (convergence.shouldStop(Clock::now())) {
-                    searchStop.store(true);
-                }
-            } else {
-                ++it;
-            }
-        }
-
-        while (!stopRequested.load() && !searchStop.load() && elapsedSeconds(started) < searchLimit && futures.size() < maxInflightAttempts && nextAttempt < maxAttempts) {
-            launchAttempt(nextAttempt++);
-        }
-
-        if (!completedAny) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(5));
-        }
-    }
-    searchStop.store(true);
-    if (deadlineThread.joinable()) {
-        deadlineThread.join();
-    }
-
-    std::atomic_bool finalPhaseStop{false};
-    std::thread totalDeadlineThread([&]() {
-        while (!finalPhaseStop.load() && !stopRequested.load() && elapsedSeconds(started) < totalLimit) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(2));
-        }
-        finalPhaseStop.store(true);
-    });
-    auto hasFinalBudget = [&](double multiplier) {
-        return !stopRequested.load() && !finalPhaseStop.load() &&
-            hasPhaseBudget(started, totalLimit, document.parts.size(), settings.performanceProfile, multiplier);
-    };
-
-    if (!stopRequested.load()) {
-        if (best.valid() && hasFinalBudget(1.00)) {
-            if (callback) {
-                refreshTimingStats(aggregateStats, started);
-                callback({SolverPhase::GapFilling, 0.86, best, best, elapsedSeconds(started), aggregateStats});
-            }
-            GapFilling gapFilling;
-            SmallPartFiller smallPartFiller;
-            ContactPacking contactPacking;
-            LayoutState gapFilled = smallPartFiller.fill(document, settings, best, globalPenalty, finalPhaseStop, &aggregateStats);
-            gapFilled = contactPacking.improve(document, settings, std::move(gapFilled), globalPenalty, finalPhaseStop, &aggregateStats);
-            gapFilled = gapFilling.fillGaps(document, settings, std::move(gapFilled), globalPenalty, finalPhaseStop, &aggregateStats);
-            if (gapFilled.valid() && gapFilled.totalScore + 1e-9 < best.totalScore) {
-                best = std::move(gapFilled);
-                ++aggregateStats.bestUpdates;
-            }
-            current = best;
-        }
-        if (best.valid() && hasFinalBudget(1.25)) {
-            if (callback) {
-                refreshTimingStats(aggregateStats, started);
-                callback({SolverPhase::Escape, 0.855, best, best, elapsedSeconds(started), aggregateStats});
-            }
-            EscapeSearch escapeSearch;
-            LayoutState escaped = escapeSearch.escape(document, settings, best, globalPenalty, finalPhaseStop, 0xced15c0u, &aggregateStats);
-            if (escaped.valid() && posesDiffer(escaped.poses, best.poses)) {
-                GapFilling gapFilling;
-                Rearrangement rearrangement;
-                SmallPartFiller smallPartFiller;
-                RegionRepack regionRepack;
-                ContactPacking contactPacking;
-                LayoutState escapedOptimized = smallPartFiller.fill(document, settings, std::move(escaped), globalPenalty, finalPhaseStop, &aggregateStats);
-                escapedOptimized = contactPacking.improve(document, settings, std::move(escapedOptimized), globalPenalty, finalPhaseStop, &aggregateStats);
-                escapedOptimized = gapFilling.fillGaps(document, settings, std::move(escapedOptimized), globalPenalty, finalPhaseStop, &aggregateStats);
-                escapedOptimized = regionRepack.improve(document, settings, std::move(escapedOptimized), globalPenalty, finalPhaseStop, &aggregateStats);
-                escapedOptimized = rearrangement.improve(document, settings, std::move(escapedOptimized), globalPenalty, finalPhaseStop, &aggregateStats);
-                if (escapedOptimized.valid() && escapedOptimized.totalScore + 1e-9 < best.totalScore) {
-                    best = std::move(escapedOptimized);
-                    ++aggregateStats.bestUpdates;
-                }
-            }
-            if (callback) {
-                refreshTimingStats(aggregateStats, started);
-                callback({SolverPhase::Rearrangement, 0.87, best, best, elapsedSeconds(started), aggregateStats});
-            }
-            Rearrangement rearrangement;
-            RegionRepack regionRepack;
-            ContactPacking contactPacking;
-            LayoutState rearranged = regionRepack.improve(document, settings, best, globalPenalty, finalPhaseStop, &aggregateStats);
-            rearranged = contactPacking.improve(document, settings, std::move(rearranged), globalPenalty, finalPhaseStop, &aggregateStats);
-            rearranged = rearrangement.improve(document, settings, std::move(rearranged), globalPenalty, finalPhaseStop, &aggregateStats);
-            if (rearranged.valid() && rearranged.totalScore + 1e-9 < best.totalScore) {
-                best = std::move(rearranged);
-                ++aggregateStats.bestUpdates;
-            }
-            current = best;
-        }
-        if (hasFinalBudget(1.50)) {
-            if (callback) {
-                refreshTimingStats(aggregateStats, started);
-                callback({SolverPhase::UltraRefinement, 0.88, best, best, elapsedSeconds(started), aggregateStats});
-            }
-            UltraRefinement ultraRefinement;
-            LayoutState refined = ultraRefinement.refine(document, settings, best, globalPenalty, attemptPool, finalPhaseStop);
-            const UltraRefinementStats ultraStats = ultraRefinement.lastStats();
-            aggregateStats.evaluatedCandidates += ultraStats.evaluatedCandidates;
-            aggregateStats.acceptedMoves += static_cast<size_t>(std::max(0, ultraStats.acceptedMoves));
-            aggregateStats.ultraAccepted += static_cast<size_t>(std::max(0, ultraStats.acceptedMoves));
-            if (refined.valid() && (!best.valid() || refined.totalScore < best.totalScore)) {
-                best = refined;
-                ++aggregateStats.bestUpdates;
-            }
-            current = refined.valid() ? refined : best;
-            if (callback) {
-                refreshTimingStats(aggregateStats, started);
-                callback({SolverPhase::UltraRefinement, 0.94, current, best, elapsedSeconds(started), aggregateStats});
-            }
-        }
-    }
-    finalPhaseStop.store(true);
-    if (totalDeadlineThread.joinable()) {
-        totalDeadlineThread.join();
-    }
+    current = best;
+    aggregateStats.attemptsCompleted = 1;
     refreshTimingStats(aggregateStats, started);
     lastStats_ = aggregateStats;
     return best;

@@ -31,7 +31,7 @@ public:
 
 private:
     void run();
-    void publishSnapshot(SolverPhase phase, double progress, const std::vector<Pose>& current, const std::vector<Pose>& best, size_t collisions, double overlap, double utilization, bool running, double elapsedSeconds, size_t validationFailures = 0, size_t invalidParts = 0, const SolverStats& stats = {});
+    void publishSnapshot(SolverPhase phase, SolverStrategy strategy, double progress, const std::vector<Pose>& current, const std::vector<Pose>& best, size_t collisions, double overlap, double utilization, bool running, double elapsedSeconds, size_t validationFailures = 0, size_t invalidParts = 0, const SolverStats& stats = {});
 
     Document* document_ = nullptr;
     EngineSettings settings_{};

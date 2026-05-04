@@ -25,6 +25,26 @@ enum class SolverPhase {
     Stopped
 };
 
+enum class SolverStrategy {
+    Idle,
+    AdaptiveSearch,
+    ContactPacking,
+    Compression,
+    GapFilling,
+    HoleFilling,
+    ConcavityFilling,
+    SmallPartFiller,
+    Swap,
+    EjectionChain,
+    ClusterRepack,
+    RegionRepack,
+    RotationRefinement,
+    Mirror,
+    Escape,
+    Frontier,
+    Done
+};
+
 struct SolverStats {
     size_t evaluatedCandidates = 0;
     size_t acceptedMoves = 0;
@@ -70,6 +90,7 @@ struct SolverSnapshot {
     size_t validationFailureCount = 0;
     size_t invalidPartCount = 0;
     SolverStats stats;
+    SolverStrategy currentStrategy = SolverStrategy::Idle;
     bool running = false;
 };
 
@@ -81,6 +102,7 @@ struct SolverResult {
     size_t validationFailureCount = 0;
     size_t invalidPartCount = 0;
     SolverStats stats;
+    SolverStrategy currentStrategy = SolverStrategy::Idle;
     bool valid = false;
 };
 

@@ -61,10 +61,42 @@ TextId textIdForPhase(SolverPhase phase) {
     return TextId::Idle;
 }
 
+TextId textIdForStrategy(SolverStrategy strategy) {
+    switch (strategy) {
+    case SolverStrategy::Idle: return TextId::Idle;
+    case SolverStrategy::AdaptiveSearch: return TextId::Exploration;
+    case SolverStrategy::ContactPacking: return TextId::ContactPacking;
+    case SolverStrategy::Compression: return TextId::Compression;
+    case SolverStrategy::GapFilling: return TextId::GapFilling;
+    case SolverStrategy::HoleFilling: return TextId::HoleFilling;
+    case SolverStrategy::ConcavityFilling: return TextId::ConcavityFilling;
+    case SolverStrategy::SmallPartFiller: return TextId::SmallPartFiller;
+    case SolverStrategy::Swap: return TextId::Swap;
+    case SolverStrategy::EjectionChain: return TextId::EjectionChain;
+    case SolverStrategy::ClusterRepack: return TextId::ClusterRepack;
+    case SolverStrategy::RegionRepack: return TextId::RegionRepack;
+    case SolverStrategy::RotationRefinement: return TextId::UltraRefinement;
+    case SolverStrategy::Mirror: return TextId::Mirror;
+    case SolverStrategy::Escape: return TextId::Escape;
+    case SolverStrategy::Frontier: return TextId::Frontier;
+    case SolverStrategy::Done: return TextId::Done;
+    }
+    return TextId::Idle;
+}
+
 std::wstring phaseLine(const SolverSnapshot& snapshot) {
     const auto& loc = Localization::instance();
     std::wostringstream out;
-    out << loc.text(textIdForPhase(snapshot.phase)) << L"  " << static_cast<int>(snapshot.progress * 100.0) << L"%";
+    const bool terminal = snapshot.phase == SolverPhase::Done ||
+        snapshot.phase == SolverPhase::NoValidLayout ||
+        snapshot.phase == SolverPhase::Failed ||
+        snapshot.phase == SolverPhase::Stopped;
+    if (terminal) {
+        out << loc.text(textIdForPhase(snapshot.phase));
+    } else {
+        out << loc.text(TextId::CurrentStrategy) << L": " << loc.text(textIdForStrategy(snapshot.currentStrategy));
+    }
+    out << L"  " << static_cast<int>(snapshot.progress * 100.0) << L"%";
     return out.str();
 }
 

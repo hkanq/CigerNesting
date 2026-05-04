@@ -13,6 +13,7 @@ namespace nest {
 
 struct SolverProgress {
     SolverPhase phase = SolverPhase::Idle;
+    SolverStrategy currentStrategy = SolverStrategy::Idle;
     double progress = 0.0;
     LayoutState current;
     LayoutState best;

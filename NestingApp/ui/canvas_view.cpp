@@ -58,6 +58,29 @@ TextId textIdForPhase(SolverPhase phase) {
     return TextId::Idle;
 }
 
+TextId textIdForStrategy(SolverStrategy strategy) {
+    switch (strategy) {
+    case SolverStrategy::Idle: return TextId::Idle;
+    case SolverStrategy::AdaptiveSearch: return TextId::Exploration;
+    case SolverStrategy::ContactPacking: return TextId::ContactPacking;
+    case SolverStrategy::Compression: return TextId::Compression;
+    case SolverStrategy::GapFilling: return TextId::GapFilling;
+    case SolverStrategy::HoleFilling: return TextId::HoleFilling;
+    case SolverStrategy::ConcavityFilling: return TextId::ConcavityFilling;
+    case SolverStrategy::SmallPartFiller: return TextId::SmallPartFiller;
+    case SolverStrategy::Swap: return TextId::Swap;
+    case SolverStrategy::EjectionChain: return TextId::EjectionChain;
+    case SolverStrategy::ClusterRepack: return TextId::ClusterRepack;
+    case SolverStrategy::RegionRepack: return TextId::RegionRepack;
+    case SolverStrategy::RotationRefinement: return TextId::UltraRefinement;
+    case SolverStrategy::Mirror: return TextId::Mirror;
+    case SolverStrategy::Escape: return TextId::Escape;
+    case SolverStrategy::Frontier: return TextId::Frontier;
+    case SolverStrategy::Done: return TextId::Done;
+    }
+    return TextId::Idle;
+}
+
 } // namespace
 
 bool CanvasView::create(HWND parent, HINSTANCE instance) {
@@ -245,7 +268,12 @@ void CanvasView::drawDocument(IRenderer& renderer) {
     if (hasSnapshot_) {
         const auto& loc = Localization::instance();
         std::wostringstream overlay;
-        overlay << loc.text(TextId::Phase) << L": " << loc.text(textIdForPhase(snapshot_.phase))
+        const bool terminal = snapshot_.phase == SolverPhase::Done ||
+            snapshot_.phase == SolverPhase::NoValidLayout ||
+            snapshot_.phase == SolverPhase::Failed ||
+            snapshot_.phase == SolverPhase::Stopped;
+        overlay << (terminal ? loc.text(TextId::Phase) : loc.text(TextId::CurrentStrategy))
+                << L": " << loc.text(terminal ? textIdForPhase(snapshot_.phase) : textIdForStrategy(snapshot_.currentStrategy))
                 << L"  |  " << loc.text(TextId::Collision) << L": " << snapshot_.collisionCount
                 << L"  |  " << loc.text(TextId::Utilization) << L": " << static_cast<int>(snapshot_.utilization * 100.0) << L"%";
         renderer.drawText({18, 18}, overlay.str(), {40, 52, 60, 255});
