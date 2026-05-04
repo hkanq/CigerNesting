@@ -31,6 +31,7 @@ struct SolverStats {
     size_t attemptsStarted = 0;
     size_t attemptsCompleted = 0;
     size_t bestUpdates = 0;
+    size_t gapAccepted = 0;
     double elapsedMs = 0.0;
     size_t workerCount = 0;
     double candidatesPerSecond = 0.0;
@@ -47,6 +48,7 @@ struct SolverStats {
     size_t tabuRejected = 0;
     size_t escapeAttempts = 0;
     size_t escapeAccepted = 0;
+    size_t ultraAccepted = 0;
 };
 
 struct SolverSnapshot {

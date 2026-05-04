@@ -214,6 +214,7 @@ void mergeStats(SolverStats& target, const SolverStats& source) {
     target.attemptsStarted += source.attemptsStarted;
     target.attemptsCompleted += source.attemptsCompleted;
     target.bestUpdates += source.bestUpdates;
+    target.gapAccepted += source.gapAccepted;
     target.cacheHits += source.cacheHits;
     target.cacheMisses += source.cacheMisses;
     target.swapAttempts += source.swapAttempts;
@@ -227,6 +228,7 @@ void mergeStats(SolverStats& target, const SolverStats& source) {
     target.tabuRejected += source.tabuRejected;
     target.escapeAttempts += source.escapeAttempts;
     target.escapeAccepted += source.escapeAccepted;
+    target.ultraAccepted += source.ultraAccepted;
 }
 
 void refreshTimingStats(SolverStats& stats, Clock::time_point started) {
@@ -248,6 +250,16 @@ bool posesDiffer(const std::vector<Pose>& a, const std::vector<Pose>& b) {
         }
     }
     return false;
+}
+
+double phaseGuardSeconds(size_t partCount, PerformanceProfile profile, double multiplier) {
+    const double perPart = profile == PerformanceProfile::Maximum ? 0.0020 :
+        profile == PerformanceProfile::Balanced ? 0.0015 : 0.0010;
+    return std::min(2.0, std::max(0.03, static_cast<double>(partCount) * perPart * multiplier));
+}
+
+bool hasPhaseBudget(Clock::time_point started, double limitSeconds, size_t partCount, PerformanceProfile profile, double multiplier) {
+    return elapsedSeconds(started) + phaseGuardSeconds(partCount, profile, multiplier) < limitSeconds;
 }
 
 struct AttemptResult {
@@ -394,7 +406,8 @@ LayoutState MultiStartSolver::solve(
     SolverStats aggregateStats;
     PenaltySystem globalPenalty;
 
-    LayoutState best = rowBaseline(document, settings, settings.placementStrategy, 1u, 0);
+    const unsigned int baseSeed = settings.randomSeed == 0u ? 1u : settings.randomSeed;
+    LayoutState best = rowBaseline(document, settings, settings.placementStrategy, baseSeed, 0);
     LayoutState current = best;
     if (callback) {
         callback({SolverPhase::InitialPlacement, 0.12, current, best, elapsedSeconds(started), aggregateStats});
@@ -404,7 +417,7 @@ LayoutState MultiStartSolver::solve(
     const double totalLimit = std::max(0.25, settings.timeLimitSeconds);
     const double ultraReserve = ultraReserveSeconds(settings, totalLimit);
     const double searchLimit = std::max(0.05, totalLimit - ultraReserve);
-    const size_t attemptThreads = std::max<size_t>(1, ParallelCollisionEvaluator::resolveThreadCount(settings));
+    const size_t attemptThreads = settings.deterministic ? 1u : std::max<size_t>(1, ParallelCollisionEvaluator::resolveThreadCount(settings));
     const size_t maxInflightAttempts = std::max<size_t>(attemptThreads, attemptThreads * inflightMultiplier(settings.performanceProfile));
     const int maxAttempts = maxAttemptsForProfile(settings, attemptThreads, document.parts.size());
     aggregateStats.workerCount = attemptThreads;
@@ -422,7 +435,7 @@ LayoutState MultiStartSolver::solve(
     auto launchAttempt = [&](int attempt) {
         const PlacementStrategy strategy = strategies[static_cast<size_t>(attempt) % strategies.size()];
         const int orderMode = attempt % 4;
-        const unsigned int seed = static_cast<unsigned int>(attempt + 1) * 2654435761u;
+        const unsigned int seed = baseSeed ^ (static_cast<unsigned int>(attempt + 1) * 2654435761u);
         const PenaltySystem globalSnapshot = globalPenalty;
         ++aggregateStats.attemptsStarted;
         futures.push_back(attemptPool.enqueue([&, strategy, orderMode, seed, attempt, globalSnapshot]() {
@@ -442,28 +455,38 @@ LayoutState MultiStartSolver::solve(
                 return AttemptResult{std::move(state), localStats, attempt, strategy, seed};
             }
             state = resolver.resolve(document, settings, std::move(state), attemptPenalty, candidatePool, searchStop, seed, &localStats);
-            if (state.collisionCount == 0 && state.invalidPartCount == 0 && !stopRequested.load()) {
+            if (state.collisionCount == 0 && state.invalidPartCount == 0 && !stopRequested.load() &&
+                hasPhaseBudget(started, searchLimit, document.parts.size(), settings.performanceProfile, 0.50)) {
                 const double beforeCompression = state.totalScore;
                 state = compression.compressByScore(document, settings, std::move(state), attemptPenalty);
                 if (state.totalScore + 1e-9 < beforeCompression) {
                     ++localStats.acceptedMoves;
                 }
             }
-            if (state.valid() && !searchStop.load() && !stopRequested.load()) {
+            if (state.valid() && !searchStop.load() && !stopRequested.load() &&
+                hasPhaseBudget(started, searchLimit, document.parts.size(), settings.performanceProfile, 1.00)) {
                 state = gapFilling.fillGaps(document, settings, std::move(state), attemptPenalty, searchStop, &localStats);
             }
-            if (state.valid() && !searchStop.load() && !stopRequested.load()) {
+            if (state.valid() && !searchStop.load() && !stopRequested.load() &&
+                hasPhaseBudget(started, searchLimit, document.parts.size(), settings.performanceProfile, 1.00)) {
                 state = rearrangement.improve(document, settings, std::move(state), attemptPenalty, searchStop, &localStats);
             }
             if (state.valid() && !searchStop.load() && !stopRequested.load() &&
+                hasPhaseBudget(started, searchLimit, document.parts.size(), settings.performanceProfile, 1.25) &&
                 (settings.performanceProfile != PerformanceProfile::Fast || attempt % 4 == 0)) {
                 LayoutState escaped = escapeSearch.escape(document, settings, state, attemptPenalty, searchStop, seed ^ 0x51f15eedu, &localStats);
                 if (escaped.valid() && posesDiffer(escaped.poses, state.poses)) {
                     state = resolver.resolve(document, settings, std::move(escaped), attemptPenalty, candidatePool, searchStop, seed ^ 0x7f4a7c15u, &localStats);
                     if (state.valid() && !searchStop.load() && !stopRequested.load()) {
-                        state = compression.compressByScore(document, settings, std::move(state), attemptPenalty);
-                        state = gapFilling.fillGaps(document, settings, std::move(state), attemptPenalty, searchStop, &localStats);
-                        state = rearrangement.improve(document, settings, std::move(state), attemptPenalty, searchStop, &localStats);
+                        if (hasPhaseBudget(started, searchLimit, document.parts.size(), settings.performanceProfile, 0.50)) {
+                            state = compression.compressByScore(document, settings, std::move(state), attemptPenalty);
+                        }
+                        if (hasPhaseBudget(started, searchLimit, document.parts.size(), settings.performanceProfile, 1.00)) {
+                            state = gapFilling.fillGaps(document, settings, std::move(state), attemptPenalty, searchStop, &localStats);
+                        }
+                        if (hasPhaseBudget(started, searchLimit, document.parts.size(), settings.performanceProfile, 1.00)) {
+                            state = rearrangement.improve(document, settings, std::move(state), attemptPenalty, searchStop, &localStats);
+                        }
                     }
                 }
             }
@@ -526,7 +549,7 @@ LayoutState MultiStartSolver::solve(
     }
 
     if (!stopRequested.load()) {
-        if (best.valid()) {
+        if (best.valid() && hasPhaseBudget(started, totalLimit, document.parts.size(), settings.performanceProfile, 1.00)) {
             if (callback) {
                 refreshTimingStats(aggregateStats, started);
                 callback({SolverPhase::GapFilling, 0.86, best, best, elapsedSeconds(started), aggregateStats});
@@ -539,7 +562,7 @@ LayoutState MultiStartSolver::solve(
             }
             current = best;
         }
-        if (best.valid()) {
+        if (best.valid() && hasPhaseBudget(started, totalLimit, document.parts.size(), settings.performanceProfile, 1.25)) {
             if (callback) {
                 refreshTimingStats(aggregateStats, started);
                 callback({SolverPhase::Escape, 0.855, best, best, elapsedSeconds(started), aggregateStats});
@@ -568,23 +591,26 @@ LayoutState MultiStartSolver::solve(
             }
             current = best;
         }
-        if (callback) {
-            refreshTimingStats(aggregateStats, started);
-            callback({SolverPhase::UltraRefinement, 0.88, best, best, elapsedSeconds(started), aggregateStats});
-        }
-        UltraRefinement ultraRefinement;
-        LayoutState refined = ultraRefinement.refine(document, settings, best, globalPenalty, attemptPool, stopRequested);
-        const UltraRefinementStats ultraStats = ultraRefinement.lastStats();
-        aggregateStats.evaluatedCandidates += ultraStats.evaluatedCandidates;
-        aggregateStats.acceptedMoves += static_cast<size_t>(std::max(0, ultraStats.acceptedMoves));
-        if (refined.valid() && (!best.valid() || refined.totalScore < best.totalScore)) {
-            best = refined;
-            ++aggregateStats.bestUpdates;
-        }
-        current = refined.valid() ? refined : best;
-        if (callback) {
-            refreshTimingStats(aggregateStats, started);
-            callback({SolverPhase::UltraRefinement, 0.94, current, best, elapsedSeconds(started), aggregateStats});
+        if (hasPhaseBudget(started, totalLimit, document.parts.size(), settings.performanceProfile, 1.50)) {
+            if (callback) {
+                refreshTimingStats(aggregateStats, started);
+                callback({SolverPhase::UltraRefinement, 0.88, best, best, elapsedSeconds(started), aggregateStats});
+            }
+            UltraRefinement ultraRefinement;
+            LayoutState refined = ultraRefinement.refine(document, settings, best, globalPenalty, attemptPool, stopRequested);
+            const UltraRefinementStats ultraStats = ultraRefinement.lastStats();
+            aggregateStats.evaluatedCandidates += ultraStats.evaluatedCandidates;
+            aggregateStats.acceptedMoves += static_cast<size_t>(std::max(0, ultraStats.acceptedMoves));
+            aggregateStats.ultraAccepted += static_cast<size_t>(std::max(0, ultraStats.acceptedMoves));
+            if (refined.valid() && (!best.valid() || refined.totalScore < best.totalScore)) {
+                best = refined;
+                ++aggregateStats.bestUpdates;
+            }
+            current = refined.valid() ? refined : best;
+            if (callback) {
+                refreshTimingStats(aggregateStats, started);
+                callback({SolverPhase::UltraRefinement, 0.94, current, best, elapsedSeconds(started), aggregateStats});
+            }
         }
     }
     refreshTimingStats(aggregateStats, started);

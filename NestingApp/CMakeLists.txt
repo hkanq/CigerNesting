@@ -186,6 +186,43 @@ add_executable(CigerNestingEscapeSmoke
     engine/tabu_memory.cpp
 )
 
+add_executable(CigerNestingBenchmarkRunner
+    tests/benchmark_runner.cpp
+    import/importer.cpp
+    import/svg_parser.cpp
+    import/plt_parser.cpp
+    import/dxf_parser.cpp
+    geometry/arc.cpp
+    geometry/bezier.cpp
+    geometry/clearance.cpp
+    geometry/flatten.cpp
+    geometry/winding.cpp
+    geometry/polygon_utils.cpp
+    geometry/collision.cpp
+    geometry/transformed_shape.cpp
+    geometry/spatial_grid.cpp
+    engine/acceptance.cpp
+    engine/broadphase.cpp
+    engine/compression.cpp
+    engine/escape_search.cpp
+    engine/free_space_analyzer.cpp
+    engine/gap_filling.cpp
+    engine/guided_local_search.cpp
+    engine/layout_eval_cache.cpp
+    engine/layout_score.cpp
+    engine/layout_score_components.cpp
+    engine/layout_state.cpp
+    engine/multi_start_solver.cpp
+    engine/overlap_resolver.cpp
+    engine/parallel_collision_evaluator.cpp
+    engine/penalty_system.cpp
+    engine/pose_sampler.cpp
+    engine/rearrangement.cpp
+    engine/tabu_memory.cpp
+    engine/ultra_refinement.cpp
+    engine/worker_pool.cpp
+)
+
 target_include_directories(CigerNestingGeometryCollisionSmoke PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_definitions(CigerNestingGeometryCollisionSmoke PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
 target_include_directories(CigerNestingSolverQualitySmoke PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
@@ -204,6 +241,8 @@ target_include_directories(CigerNestingRearrangementSmoke PRIVATE "${CMAKE_CURRE
 target_compile_definitions(CigerNestingRearrangementSmoke PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
 target_include_directories(CigerNestingEscapeSmoke PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_definitions(CigerNestingEscapeSmoke PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
+target_include_directories(CigerNestingBenchmarkRunner PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_definitions(CigerNestingBenchmarkRunner PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
 
 if(MSVC)
     target_compile_options(CigerNesting PRIVATE /W4 /permissive- /EHsc /utf-8)
@@ -216,6 +255,7 @@ if(MSVC)
     target_compile_options(CigerNestingGapFillingSmoke PRIVATE /W4 /permissive- /EHsc /utf-8)
     target_compile_options(CigerNestingRearrangementSmoke PRIVATE /W4 /permissive- /EHsc /utf-8)
     target_compile_options(CigerNestingEscapeSmoke PRIVATE /W4 /permissive- /EHsc /utf-8)
+    target_compile_options(CigerNestingBenchmarkRunner PRIVATE /W4 /permissive- /EHsc /utf-8)
 else()
     target_compile_options(CigerNesting PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_options(CigerNestingGeometryCollisionSmoke PRIVATE -Wall -Wextra -Wpedantic)
@@ -227,4 +267,5 @@ else()
     target_compile_options(CigerNestingGapFillingSmoke PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_options(CigerNestingRearrangementSmoke PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_options(CigerNestingEscapeSmoke PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(CigerNestingBenchmarkRunner PRIVATE -Wall -Wextra -Wpedantic)
 endif()

@@ -16,6 +16,7 @@ void mergeStats(SolverStats& target, const SolverStats& source) {
     target.rejectedCollision += source.rejectedCollision;
     target.rejectedSpacing += source.rejectedSpacing;
     target.rejectedSheet += source.rejectedSheet;
+    target.gapAccepted += source.gapAccepted;
     target.cacheHits += source.cacheHits;
     target.cacheMisses += source.cacheMisses;
     target.swapAttempts += source.swapAttempts;
@@ -29,6 +30,7 @@ void mergeStats(SolverStats& target, const SolverStats& source) {
     target.tabuRejected += source.tabuRejected;
     target.escapeAttempts += source.escapeAttempts;
     target.escapeAccepted += source.escapeAccepted;
+    target.ultraAccepted += source.ultraAccepted;
 }
 
 void classifyCandidate(const DeltaEvaluation& trial, SolverStats& stats) {

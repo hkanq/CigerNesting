@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+
 namespace nest {
 
 enum class RotationMode {
@@ -54,6 +56,8 @@ struct EngineSettings {
     int livePreviewIntervalMs = 75;
     double collisionTolerance = 0.01;
     double curveFlattenTolerance = 0.35;
+    uint32_t randomSeed = 1u;
+    bool deterministic = false;
 };
 
 } // namespace nest

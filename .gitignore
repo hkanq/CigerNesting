@@ -1,4 +1,5 @@
 build/
 .vs/
+outputs/
 *.user
 *.suo

@@ -330,6 +330,7 @@ LayoutState GapFilling::fillGaps(
                 if (stats) {
                     ++stats->acceptedMoves;
                     ++stats->bestUpdates;
+                    ++stats->gapAccepted;
                 }
             }
         }

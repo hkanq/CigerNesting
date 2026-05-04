@@ -1,0 +1,42 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" width="820" height="740" viewBox="0 0 820 740">
+<g fill="none" stroke="black" stroke-width="1">
+<polygon id="sheet_outer" points="0,0 800,0 800,650 700,650 700,710 0,710" />
+<polygon id="sheet_hole" points="40,610 120,610 120,690 40,690" />
+  <polygon points="40,30 64,34 58,48 43,45" />
+  <rect x="114" y="30" width="31" height="23" />
+  <rect x="188" y="30" width="38" height="28" />
+  <rect x="262" y="30" width="27" height="33" />
+  <rect x="336" y="30" width="34" height="22" />
+  <polygon points="410,30 451,34 445,57 413,54" />
+  <rect x="40" y="88" width="30" height="32" />
+  <path d="M 114 88 L 151 88 L 151 97,45 L 131,76 97,45 L 131,76 109 L 114 109 Z" />
+  <rect x="188" y="88" width="26" height="26" />
+  <rect x="262" y="88" width="33" height="31" />
+  <polygon points="336,88 376,92 370,108 339,105" />
+  <rect x="410" y="88" width="29" height="25" />
+  <rect x="40" y="146" width="36" height="30" />
+  <rect x="114" y="146" width="25" height="19" />
+  <path d="M 188 146 L 220 146 L 220 156,8 L 203,36 156,8 L 203,36 170 L 188 170 Z" />
+  <polygon points="262,146 301,150 295,175 265,172" />
+  <rect x="336" y="146" width="28" height="18" />
+  <rect x="410" y="146" width="35" height="23" />
+  <rect x="40" y="204" width="24" height="28" />
+  <rect x="114" y="204" width="31" height="33" />
+  <polygon points="188,204 226,208 220,226 191,223" />
+  <path d="M 262 204 L 289 204 L 289 216,15 L 274,96 216,15 L 274,96 231 L 262 231 Z" />
+  <rect x="336" y="204" width="34" height="32" />
+  <rect x="410" y="204" width="41" height="21" />
+  <rect x="40" y="262" width="30" height="26" />
+  <polygon points="114,262 151,266 145,293 117,290" />
+  <rect x="188" y="262" width="26" height="20" />
+  <rect x="262" y="262" width="33" height="25" />
+  <path d="M 596 262 L 636 262 L 636 275,5 L 615,2 275,5 L 615,2 292 L 596 292 Z" />
+  <rect x="670" y="262" width="29" height="19" />
+  <polygon points="40,320 76,324 70,344 43,341" />
+  <rect x="114" y="320" width="25" height="29" />
+  <rect x="188" y="320" width="32" height="18" />
+  <rect x="262" y="320" width="39" height="23" />
+  <rect x="596" y="320" width="28" height="28" />
+  <polygon points="670,320 705,324 699,353 673,350" />
+</g>
+</svg>
