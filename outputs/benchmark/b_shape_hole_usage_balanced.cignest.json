@@ -28,7 +28,7 @@
   "partsCount": 13,
   "finalPoses": [
     {"part": 0, "x": 340.300000, "y": 10.500000, "angleRadians": 1.570796, "mirrored": false},
-    {"part": 1, "x": 51.600000, "y": 62.200000, "angleRadians": 0.000000, "mirrored": false},
+    {"part": 1, "x": 102.000000, "y": -20.000000, "angleRadians": 0.000000, "mirrored": false},
     {"part": 2, "x": -35.000000, "y": -20.000000, "angleRadians": 0.000000, "mirrored": false},
     {"part": 3, "x": 300.000000, "y": 278.000000, "angleRadians": 1.570796, "mirrored": true},
     {"part": 4, "x": 212.000000, "y": -278.000000, "angleRadians": 1.570796, "mirrored": false},
@@ -36,13 +36,13 @@
     {"part": 6, "x": 393.000000, "y": -214.000000, "angleRadians": 1.570796, "mirrored": false},
     {"part": 7, "x": 290.000000, "y": -246.000000, "angleRadians": 1.570796, "mirrored": false},
     {"part": 8, "x": 217.000000, "y": -278.000000, "angleRadians": 1.570796, "mirrored": false},
-    {"part": 9, "x": 102.000000, "y": -103.500000, "angleRadians": 0.000000, "mirrored": false},
+    {"part": 9, "x": 51.600000, "y": -21.300000, "angleRadians": 0.000000, "mirrored": false},
     {"part": 10, "x": 18.000000, "y": -104.000000, "angleRadians": 0.000000, "mirrored": false},
     {"part": 11, "x": 38.000000, "y": 278.000000, "angleRadians": 4.712389, "mirrored": false},
     {"part": 12, "x": 349.000000, "y": -278.000000, "angleRadians": 1.570796, "mirrored": false}
   ],
   "score": {
-    "totalScore": 17793.584396,
+    "totalScore": 12843.995265,
     "utilization": 0.762503,
     "usedWidth": 212.700000,
     "usedHeight": 142.500000,
@@ -52,19 +52,19 @@
     "sheetPenalty": 0.000000
   },
   "stats": {
-    "elapsedMs": 1142.848900,
-    "evaluatedCandidates": 4381,
-    "candidatesPerSecond": 3833.402648,
-    "acceptedMoves": 5,
+    "elapsedMs": 866.833800,
+    "evaluatedCandidates": 2451,
+    "candidatesPerSecond": 2827.531644,
+    "acceptedMoves": 4,
     "acceptedWorseMoves": 0,
-    "bestUpdates": 5,
+    "bestUpdates": 4,
     "gapAccepted": 1,
-    "swapAccepted": 1,
+    "swapAccepted": 0,
     "chainAccepted": 0,
     "escapeAccepted": 0,
     "ultraAccepted": 0,
     "compactionAccepted": 1,
-    "frontierCandidates": 567,
+    "frontierCandidates": 90,
     "smallFillerAccepted": 0,
     "regionRepackAccepted": 2
   }

@@ -168,6 +168,73 @@ double sheetUsableArea(const Document& document, const EngineSettings& settings)
     return std::max(1.0, (document.sheet.width - settings.margin * 2.0) * (document.sheet.height - settings.margin * 2.0));
 }
 
+double clamp01(double value) {
+    return std::max(0.0, std::min(1.0, value));
+}
+
+double normalizedDistance(double distance, double scale) {
+    return clamp01(distance / std::max(1.0, scale));
+}
+
+uint64_t partOperatorKey(size_t part, OperatorKind kind) {
+    return (static_cast<uint64_t>(part) << 8) ^ static_cast<uint64_t>(kind);
+}
+
+void incrementSummary(ActiveMoveSummary& summary, OperatorKind kind) {
+    switch (kind) {
+    case OperatorKind::ContactPacking:
+        ++summary.contact;
+        break;
+    case OperatorKind::Compression:
+        ++summary.compression;
+        break;
+    case OperatorKind::GapFilling:
+        ++summary.gap;
+        break;
+    case OperatorKind::HoleFilling:
+        ++summary.hole;
+        break;
+    case OperatorKind::ConcavityFilling:
+        ++summary.concavity;
+        break;
+    case OperatorKind::SmallPartFiller:
+        ++summary.smallPart;
+        break;
+    case OperatorKind::Swap:
+        ++summary.swap;
+        break;
+    case OperatorKind::EjectionChain:
+        ++summary.chain;
+        break;
+    case OperatorKind::ClusterRepack:
+        ++summary.cluster;
+        break;
+    case OperatorKind::RegionRepack:
+        ++summary.region;
+        break;
+    case OperatorKind::RotationRefinement:
+        ++summary.rotation;
+        break;
+    case OperatorKind::Mirror:
+        ++summary.mirror;
+        break;
+    case OperatorKind::Escape:
+        ++summary.escape;
+        break;
+    case OperatorKind::Frontier:
+        ++summary.frontier;
+        break;
+    }
+}
+
+double summaryTotal(const ActiveMoveSummary& summary) {
+    return static_cast<double>(
+        summary.contact + summary.compression + summary.gap + summary.hole +
+        summary.concavity + summary.smallPart + summary.swap + summary.chain +
+        summary.cluster + summary.region + summary.rotation + summary.mirror +
+        summary.escape + summary.frontier);
+}
+
 class ContextOperator : public IOperator {
 public:
     explicit ContextOperator(const OperatorContext& context) : context_(context) {}
@@ -562,49 +629,176 @@ std::vector<std::unique_ptr<IOperator>> makeOperators(const OperatorContext& con
 }
 
 bool operatorApplies(OperatorKind kind, const PartState& part, size_t noImprovementSteps) {
+    const double threshold = noImprovementSteps > 4 ? 0.08 : 0.16;
     switch (kind) {
     case OperatorKind::ContactPacking:
-        return part.nearBoundary || part.highClearanceGap || part.inDenseRegion;
+        return std::max(part.need.needsCompression, part.need.needsGapMove) > threshold ||
+            part.nearBoundary || part.inDenseRegion;
     case OperatorKind::Compression:
-        return part.nearBoundary || part.highClearanceGap || part.inDenseRegion;
+        return part.need.needsCompression > threshold || part.hasCollision;
     case OperatorKind::GapFilling:
-        return part.highClearanceGap || part.nearBoundary;
+        return part.need.needsGapMove > threshold;
     case OperatorKind::HoleFilling:
-        return part.candidateForHole;
+        return part.need.needsHoleFilling > threshold || part.candidateForHole;
     case OperatorKind::ConcavityFilling:
-        return part.candidateForConcavity;
+        return part.need.needsConcavityFitting > threshold || part.candidateForConcavity;
     case OperatorKind::SmallPartFiller:
-        return part.candidateForHole || part.candidateForConcavity || part.highClearanceGap;
+        return (1.0 - part.sizeRank) > 0.45 &&
+            std::max({part.need.needsHoleFilling, part.need.needsConcavityFitting, part.need.needsGapMove}) > threshold;
     case OperatorKind::Swap:
-        return part.inDenseRegion || part.nearBoundary;
+        return part.need.needsSwap > threshold;
     case OperatorKind::EjectionChain:
-        return part.candidateForHole || part.candidateForConcavity || noImprovementSteps > 4;
+        return part.need.needsHoleFilling > threshold || part.need.needsConcavityFitting > threshold || noImprovementSteps > 4;
     case OperatorKind::ClusterRepack:
-        return part.inDenseRegion || noImprovementSteps > 6;
+        return part.inDenseRegion || part.need.blocksOthers > threshold || noImprovementSteps > 6;
     case OperatorKind::RegionRepack:
-        return part.nearBoundary || part.highClearanceGap;
+        return part.need.wastedSpaceAround > threshold || part.need.needsGapMove > threshold;
     case OperatorKind::RotationRefinement:
-        return part.rotationSensitive;
+        return part.need.needsRotation > threshold;
     case OperatorKind::Mirror:
-        return part.mirrorSensitive;
+        return part.need.needsMirror > threshold;
     case OperatorKind::Escape:
-        return noImprovementSteps > 6;
+        return part.need.needsEscape > threshold || noImprovementSteps > 6;
     case OperatorKind::Frontier:
-        return part.nearBoundary || part.highClearanceGap;
+        return part.need.needsGapMove > threshold || part.need.boundaryContribution > threshold;
     }
     return false;
 }
 
-size_t targetLimit(const EngineSettings& settings, size_t partCount) {
-    if (partCount <= 16) {
-        return partCount;
+double operatorNeedScore(OperatorKind kind, const PartState& part, size_t noImprovementSteps) {
+    switch (kind) {
+    case OperatorKind::ContactPacking:
+        return std::max(part.need.needsCompression, part.need.needsGapMove) * 0.65 +
+            part.need.boundaryContribution * 0.20 +
+            part.need.mobilityScore * 0.15;
+    case OperatorKind::Compression:
+        return part.need.needsCompression;
+    case OperatorKind::GapFilling:
+        return part.need.needsGapMove;
+    case OperatorKind::HoleFilling:
+        return part.need.needsHoleFilling;
+    case OperatorKind::ConcavityFilling:
+        return part.need.needsConcavityFitting;
+    case OperatorKind::SmallPartFiller:
+        return (1.0 - part.sizeRank) * std::max({part.need.needsHoleFilling, part.need.needsConcavityFitting, part.need.needsGapMove});
+    case OperatorKind::Swap:
+        return part.need.needsSwap;
+    case OperatorKind::EjectionChain:
+        return std::max(part.need.needsHoleFilling, part.need.needsConcavityFitting) + (noImprovementSteps > 4 ? 0.18 : 0.0);
+    case OperatorKind::ClusterRepack:
+        return part.need.blocksOthers * 0.65 + (part.inDenseRegion ? 0.25 : 0.0);
+    case OperatorKind::RegionRepack:
+        return part.need.wastedSpaceAround * 0.65 + part.need.needsGapMove * 0.35;
+    case OperatorKind::RotationRefinement:
+        return part.need.needsRotation;
+    case OperatorKind::Mirror:
+        return part.need.needsMirror;
+    case OperatorKind::Escape:
+        return part.need.needsEscape + (noImprovementSteps > 6 ? 0.25 : 0.0);
+    case OperatorKind::Frontier:
+        return part.need.needsGapMove * 0.55 + part.need.boundaryContribution * 0.35;
     }
-    size_t limit = settings.performanceProfile == PerformanceProfile::Maximum ? 48u :
-        settings.performanceProfile == PerformanceProfile::Balanced ? 28u : 14u;
-    if (partCount > 300) {
-        limit = std::min<size_t>(limit, 24);
+    return 0.0;
+}
+
+double operatorSchedulerBias(OperatorKind kind, const std::unordered_map<OperatorKind, OperatorStats>& stats) {
+    auto it = stats.find(kind);
+    if (it == stats.end()) {
+        return 1.0;
     }
-    return std::min(partCount, limit);
+    return std::max(0.50, std::min(2.25, std::sqrt(it->second.schedulerScore())));
+}
+
+size_t moveTaskLimit(const EngineSettings& settings, size_t partCount) {
+    size_t limit = settings.performanceProfile == PerformanceProfile::Maximum ? 120u :
+        settings.performanceProfile == PerformanceProfile::Balanced ? 72u : 36u;
+    if (partCount > 300 && settings.performanceProfile != PerformanceProfile::Maximum) {
+        limit = std::min<size_t>(limit, 56u);
+    }
+    return std::max<size_t>(16u, std::min(limit, partCount * 4u + 8u));
+}
+
+std::vector<MoveTask> buildMoveTasks(
+    const EngineSettings& settings,
+    const std::vector<PartState>& partStates,
+    const std::unordered_map<OperatorKind, OperatorStats>& operatorStats,
+    const std::unordered_map<uint64_t, double>& partOperatorBias,
+    size_t noImprovementSteps) {
+    static constexpr std::array<OperatorKind, 14> kinds{
+        OperatorKind::ContactPacking,
+        OperatorKind::Compression,
+        OperatorKind::GapFilling,
+        OperatorKind::HoleFilling,
+        OperatorKind::ConcavityFilling,
+        OperatorKind::SmallPartFiller,
+        OperatorKind::Swap,
+        OperatorKind::EjectionChain,
+        OperatorKind::ClusterRepack,
+        OperatorKind::RegionRepack,
+        OperatorKind::RotationRefinement,
+        OperatorKind::Mirror,
+        OperatorKind::Escape,
+        OperatorKind::Frontier
+    };
+    std::vector<MoveTask> tasks;
+    tasks.reserve(partStates.size() * 3u);
+    for (const PartState& part : partStates) {
+        for (OperatorKind kind : kinds) {
+            if (!operatorApplies(kind, part, noImprovementSteps)) {
+                continue;
+            }
+            const double need = operatorNeedScore(kind, part, noImprovementSteps);
+            if (need <= 0.035) {
+                continue;
+            }
+            double bias = 1.0;
+            auto biasIt = partOperatorBias.find(partOperatorKey(part.part, kind));
+            if (biasIt != partOperatorBias.end()) {
+                bias = biasIt->second;
+            }
+            const double scheduler = operatorSchedulerBias(kind, operatorStats);
+            const double collisionBoost = part.hasCollision ? 8.0 : 0.0;
+            const double mixedSizeBoost = (kind == OperatorKind::HoleFilling ||
+                                           kind == OperatorKind::ConcavityFilling ||
+                                           kind == OperatorKind::SmallPartFiller ||
+                                           kind == OperatorKind::GapFilling)
+                ? (1.0 - part.sizeRank) * 0.45
+                : part.sizeRank * 0.12;
+            MoveTask task;
+            task.partIndex = part.part;
+            task.operatorType = kind;
+            task.estimatedGain = need * (1.0 + part.potentialScore);
+            task.priority = collisionBoost +
+                part.priority * 0.08 +
+                task.estimatedGain * 100.0 * scheduler * bias +
+                mixedSizeBoost * 45.0;
+            tasks.push_back(task);
+        }
+    }
+    std::stable_sort(tasks.begin(), tasks.end(), [](const MoveTask& a, const MoveTask& b) {
+        if (std::abs(a.priority - b.priority) > 1e-9) {
+            return a.priority > b.priority;
+        }
+        if (a.partIndex != b.partIndex) {
+            return a.partIndex < b.partIndex;
+        }
+        return static_cast<int>(a.operatorType) < static_cast<int>(b.operatorType);
+    });
+    const size_t limit = moveTaskLimit(settings, partStates.size());
+    if (tasks.size() > limit) {
+        tasks.resize(limit);
+    }
+    return tasks;
+}
+
+size_t highPotentialPartCount(const std::vector<PartState>& parts) {
+    return static_cast<size_t>(std::count_if(parts.begin(), parts.end(), [](const PartState& part) {
+        return part.potentialScore > 0.52 ||
+            part.need.needsHoleFilling > 0.45 ||
+            part.need.needsConcavityFitting > 0.45 ||
+            part.need.needsRotation > 0.45 ||
+            part.need.needsGapMove > 0.62;
+    }));
 }
 
 size_t operatorBudget(const EngineSettings& settings, const OperatorStats& stats) {
@@ -620,7 +814,8 @@ std::vector<PartState> analyzeParts(
     const EngineSettings& settings,
     const LayoutState& state,
     const LayoutEvalCache& cache,
-    const std::vector<FreeSpaceCandidate>& freeSpace) {
+    const std::vector<FreeSpaceCandidate>& freeSpace,
+    const std::vector<FrontierCandidate>& frontiers) {
     std::vector<PartState> parts;
     parts.reserve(state.poses.size());
     std::vector<char> colliding(state.poses.size(), 0);
@@ -636,11 +831,26 @@ std::vector<PartState> analyzeParts(
     const AABB used = cache.usedBounds();
     const double boundaryEps = std::max(2.0, settings.partSpacing + settings.margin * 0.25);
     const double avgArea = document.parts.empty() ? 1.0 : document.totalPartArea() / static_cast<double>(document.parts.size());
+    std::vector<double> footprints(document.parts.size(), 0.0);
+    for (size_t i = 0; i < document.parts.size(); ++i) {
+        footprints[i] = partFootprint(document.parts[i]);
+    }
+    std::vector<double> sortedFootprints = footprints;
+    std::sort(sortedFootprints.begin(), sortedFootprints.end());
+    const double usedArea = std::max(1.0, used.area());
+    const double sheetArea = sheetUsableArea(document, settings);
+    const double usedScale = std::max(1.0, std::sqrt(usedArea));
+
     for (size_t i = 0; i < state.poses.size() && i < document.parts.size(); ++i) {
         PartState part;
         part.part = i;
         const AABB bounds = cache.partBounds()[i];
-        const double footprint = partFootprint(document.parts[i]);
+        const double footprint = footprints[i];
+        const Vec2 center = bounds.center();
+        const auto rankIt = std::upper_bound(sortedFootprints.begin(), sortedFootprints.end(), footprint);
+        part.sizeRank = sortedFootprints.empty()
+            ? 0.0
+            : static_cast<double>(std::distance(sortedFootprints.begin(), rankIt)) / static_cast<double>(sortedFootprints.size());
         part.hasCollision = colliding[i] != 0;
         part.nearBoundary = used.isValid() &&
             (std::abs(bounds.min.x - used.min.x) <= boundaryEps ||
@@ -652,45 +862,112 @@ std::vector<PartState> analyzeParts(
         part.inDenseRegion = part.neighborCount >= (document.parts.size() > 120 ? 7u : 5u);
         part.highClearanceGap = part.neighborCount <= 2 || part.nearBoundary;
         const double aspect = bounds.isValid() ? std::max(bounds.width(), bounds.height()) / std::max(1.0, std::min(bounds.width(), bounds.height())) : 1.0;
-        part.rotationSensitive = settings.allowRotation && aspect > 1.18;
+        double bestRotationGain = 0.0;
+        if (settings.allowRotation && settings.rotationMode != RotationMode::None) {
+            PoseSampler sampler;
+            const double currentArea = std::max(1.0, bounds.area());
+            size_t checked = 0;
+            for (double angle : sampler.coarseRotationSamples(settings)) {
+                Pose candidatePose = state.poses[i];
+                candidatePose.angleRadians = angle;
+                const AABB rotated = transformedBounds(document.parts[i], candidatePose);
+                bestRotationGain = std::max(bestRotationGain, (currentArea - rotated.area()) / currentArea);
+                if (++checked >= 8) {
+                    break;
+                }
+            }
+        }
+        part.rotationSensitive = settings.allowRotation && (aspect > 1.12 || bestRotationGain > 0.035);
         part.mirrorSensitive = settings.allowMirroring && (aspect > 1.05 || document.parts[i].rings.size() > 1);
-        part.candidateForHole = footprint <= avgArea * 0.85;
-        part.candidateForConcavity = footprint <= avgArea * 1.10;
+        part.candidateForHole = footprint <= avgArea * 0.95;
+        part.candidateForConcavity = footprint <= avgArea * 1.20;
+        double holeScore = 0.0;
+        double concavityScore = 0.0;
+        double gapScore = 0.0;
+        size_t fittingHoleCount = 0;
+        size_t fittingConcavityCount = 0;
         for (const FreeSpaceCandidate& candidate : freeSpace) {
             if (candidate.sourcePart == i) {
                 continue;
             }
-            if (candidate.kind == FreeSpaceCandidateKind::PartHole && candidate.featureBounds.area() >= footprint * 1.05) {
+            const double featureArea = candidate.featureBounds.isValid() ? candidate.featureBounds.area() : 0.0;
+            const double centerDistance = (candidate.anchor - center).length();
+            const double distanceBoost = 1.0 - normalizedDistance(centerDistance, usedScale);
+            if (candidate.kind == FreeSpaceCandidateKind::PartHole && featureArea >= footprint * 1.02) {
                 part.candidateForHole = true;
+                ++fittingHoleCount;
+                holeScore = std::max(holeScore, 0.45 + 0.35 * distanceBoost + 0.20 * (1.0 - part.sizeRank));
             }
-            if (candidate.kind == FreeSpaceCandidateKind::Concavity && candidate.featureBounds.area() >= footprint * 0.60) {
+            if (candidate.kind == FreeSpaceCandidateKind::Concavity && featureArea >= footprint * 0.55) {
                 part.candidateForConcavity = true;
+                ++fittingConcavityCount;
+                concavityScore = std::max(concavityScore, 0.35 + 0.35 * distanceBoost + 0.20 * (1.0 - part.sizeRank));
+            }
+            if ((candidate.kind == FreeSpaceCandidateKind::UsedBoundsGap ||
+                 candidate.kind == FreeSpaceCandidateKind::SheetBoundary ||
+                 candidate.kind == FreeSpaceCandidateKind::SheetCorner) &&
+                (featureArea <= 0.0 || featureArea >= footprint * 0.65)) {
+                gapScore = std::max(gapScore, 0.20 + 0.30 * distanceBoost + 0.35 * (1.0 - part.sizeRank));
             }
         }
+        for (const FrontierCandidate& frontier : frontiers) {
+            if (frontier.sourcePart == i) {
+                continue;
+            }
+            const double featureArea = frontier.featureBounds.isValid() ? frontier.featureBounds.area() : 0.0;
+            if (featureArea <= 0.0 || featureArea >= footprint * 0.50) {
+                const double distanceBoost = 1.0 - normalizedDistance((frontier.anchor - center).length(), usedScale);
+                gapScore = std::max(gapScore, 0.25 + 0.35 * distanceBoost + 0.25 * (1.0 - part.sizeRank));
+            }
+        }
+
+        double boundaryContribution = 0.0;
+        if (used.isValid()) {
+            if (std::abs(bounds.min.x - used.min.x) <= boundaryEps || std::abs(bounds.max.x - used.max.x) <= boundaryEps) {
+                boundaryContribution += bounds.width() / std::max(1.0, used.width());
+            }
+            if (std::abs(bounds.min.y - used.min.y) <= boundaryEps || std::abs(bounds.max.y - used.max.y) <= boundaryEps) {
+                boundaryContribution += bounds.height() / std::max(1.0, used.height());
+            }
+        }
+        boundaryContribution = clamp01(boundaryContribution);
+        const double neighborDensity = clamp01(static_cast<double>(part.neighborCount) / static_cast<double>(document.parts.size() > 120 ? 12u : 8u));
+        const double freeAround = clamp01(1.0 - neighborDensity);
+        const double footprintShare = clamp01(footprint / sheetArea * static_cast<double>(document.parts.size()));
+        const double wastedSpace = clamp01((freeAround * 0.55) + (boundaryContribution * 0.30) + (gapScore * 0.35));
+        part.need.boundaryContribution = boundaryContribution;
+        part.need.wastedSpaceAround = wastedSpace;
+        part.need.mobilityScore = clamp01(freeAround * 0.70 + gapScore * 0.30);
+        part.need.blocksOthers = clamp01(neighborDensity * 0.45 + boundaryContribution * 0.35 + footprintShare * 0.20);
+        part.need.needsCompression = clamp01(boundaryContribution * 0.65 + wastedSpace * 0.25 + (part.hasCollision ? 1.0 : 0.0));
+        part.need.needsRotation = clamp01(bestRotationGain * 3.5 + (part.rotationSensitive ? 0.20 : 0.0) + boundaryContribution * 0.10);
+        part.need.needsMirror = clamp01((part.mirrorSensitive ? 0.25 : 0.0) + holeScore * 0.25 + concavityScore * 0.20);
+        part.need.needsHoleFilling = clamp01(holeScore + static_cast<double>(fittingHoleCount > 0 ? 1 : 0) * 0.20);
+        part.need.needsConcavityFitting = clamp01(concavityScore + static_cast<double>(fittingConcavityCount > 0 ? 1 : 0) * 0.15);
+        part.need.needsGapMove = clamp01(gapScore + wastedSpace * 0.35 + freeAround * 0.15);
+        part.need.needsSwap = clamp01(part.need.blocksOthers * 0.55 + neighborDensity * 0.30 + boundaryContribution * 0.15);
+        part.need.needsEscape = clamp01((part.hasCollision ? 0.40 : 0.0) + wastedSpace * 0.20 + neighborDensity * 0.15);
+        part.potentialScore = std::max({
+            part.need.needsCompression,
+            part.need.needsRotation,
+            part.need.needsMirror,
+            part.need.needsHoleFilling,
+            part.need.needsConcavityFitting,
+            part.need.needsGapMove,
+            part.need.needsSwap,
+            part.need.needsEscape,
+            part.need.blocksOthers,
+            part.need.wastedSpaceAround,
+            part.need.boundaryContribution
+        });
         part.priority =
             (part.hasCollision ? 10000.0 : 0.0) +
-            (part.nearBoundary ? 160.0 : 0.0) +
-            (part.inDenseRegion ? 90.0 : 0.0) +
-            (part.candidateForHole ? 75.0 : 0.0) +
-            (part.candidateForConcavity ? 65.0 : 0.0) +
-            (part.rotationSensitive ? 30.0 : 0.0) +
-            (part.mirrorSensitive ? 25.0 : 0.0) +
-            footprint / std::max(1.0, sheetUsableArea(document, settings)) * 40.0;
+            part.potentialScore * 180.0 +
+            part.need.boundaryContribution * 120.0 +
+            part.need.blocksOthers * 90.0 +
+            (1.0 - part.sizeRank) * (part.need.needsHoleFilling + part.need.needsGapMove) * 80.0 +
+            footprint / sheetArea * 40.0;
         parts.push_back(part);
-    }
-    return parts;
-}
-
-std::vector<PartState> selectTargets(const EngineSettings& settings, std::vector<PartState> parts) {
-    std::stable_sort(parts.begin(), parts.end(), [](const PartState& a, const PartState& b) {
-        if (std::abs(a.priority - b.priority) > 1e-9) {
-            return a.priority > b.priority;
-        }
-        return a.part < b.part;
-    });
-    const size_t limit = targetLimit(settings, parts.size());
-    if (parts.size() > limit) {
-        parts.resize(limit);
     }
     return parts;
 }
@@ -757,6 +1034,7 @@ void classifyRejected(const MultiDeltaEvaluation& evaluation, SolverStats& stats
 
 void recordAccepted(OperatorKind kind, SolverStats& stats) {
     ++stats.acceptedMoves;
+    incrementSummary(stats.acceptedMoveSummary, kind);
     switch (kind) {
     case OperatorKind::Compression:
         ++stats.compactionAccepted;
@@ -794,6 +1072,7 @@ void recordAccepted(OperatorKind kind, SolverStats& stats) {
 }
 
 void recordAttempt(OperatorKind kind, SolverStats& stats) {
+    incrementSummary(stats.activeMoveSummary, kind);
     switch (kind) {
     case OperatorKind::Swap:
         ++stats.swapAttempts;
@@ -871,17 +1150,29 @@ LayoutState AdaptiveUnifiedOptimizer::optimize(
     convergence.lastAcceptedMoves = stats.acceptedMoves;
     std::unordered_map<size_t, int> seenLayouts;
     seenLayouts[layoutHash(current)] = 1;
+    std::unordered_map<uint64_t, double> partOperatorBias;
     SolverStrategy currentStrategy = SolverStrategy::AdaptiveSearch;
+    uint64_t versionId = 1;
 
-    auto publish = [&]() {
+    auto publish = [&](const ActiveMoveSummary& activeMoves, bool layoutChanged, const CandidateMove& move, bool bestUpdated) {
         if (callback) {
-            callback(currentStrategy, current, best, stats);
+            AdaptiveProgressEvent event;
+            event.strategy = currentStrategy;
+            event.current = current;
+            event.best = best;
+            event.stats = stats;
+            event.activeMoves = activeMoves;
+            event.versionId = versionId;
+            event.layoutChanged = layoutChanged;
+            event.lastMovedPart = move.part;
+            event.lastMoveStrategy = strategyForOperator(move.source);
+            event.bestUpdated = bestUpdated;
+            callback(event);
         }
     };
     auto timeExpired = [&]() {
         return elapsedSeconds(started) >= std::max(0.05, safetyLimit - safetyGuard);
     };
-    publish();
 
     for (int step = 0; step < maxStepCount && !stopRequested.load() && !timeExpired(); ++step) {
         LayoutEvalCache cache;
@@ -891,127 +1182,148 @@ LayoutState AdaptiveUnifiedOptimizer::optimize(
         FrontierAnalyzer frontierAnalyzer;
         const std::vector<FreeSpaceCandidate> freeSpace = freeAnalyzer.analyze(document, settings, current);
         const std::vector<FrontierCandidate> frontiers = frontierAnalyzer.analyze(document, settings, current);
-        std::vector<PartState> partStates = analyzeParts(document, settings, current, cache, freeSpace);
-        const std::vector<PartState> targets = selectTargets(settings, partStates);
+        std::vector<PartState> partStates = analyzeParts(document, settings, current, cache, freeSpace, frontiers);
+        const std::vector<MoveTask> tasks = buildMoveTasks(
+            settings,
+            partStates,
+            operatorStats_,
+            partOperatorBias,
+            static_cast<size_t>(std::max(0, convergence.noImprovementSteps)));
+        convergence.highPotentialParts = highPotentialPartCount(partStates);
+        convergence.promisingTasks = static_cast<size_t>(std::count_if(tasks.begin(), tasks.end(), [](const MoveTask& task) {
+            return task.priority > 70.0 || task.estimatedGain > 0.55;
+        }));
 
         OperatorContext context{document, settings, cache, freeSpace, frontiers, partStates, static_cast<size_t>(step)};
         std::vector<std::unique_ptr<IOperator>> operators = makeOperators(context);
-        std::stable_sort(operators.begin(), operators.end(), [&](const std::unique_ptr<IOperator>& a, const std::unique_ptr<IOperator>& b) {
-            return operatorStats_[a->kind()].schedulerScore() > operatorStats_[b->kind()].schedulerScore();
-        });
+        auto findOperator = [&](OperatorKind kind) -> IOperator* {
+            for (const std::unique_ptr<IOperator>& op : operators) {
+                if (op->kind() == kind) {
+                    return op.get();
+                }
+            }
+            return nullptr;
+        };
 
         CandidateMove bestMove;
         LayoutState bestMoveState;
         bool foundMove = false;
         bool acceptedWorse = false;
         double bestCandidateScore = std::numeric_limits<double>::max();
+        ActiveMoveSummary stepActiveMoves;
 
-        for (const PartState& target : targets) {
+        for (const MoveTask& task : tasks) {
             if (timeExpired() || stopRequested.load()) {
                 break;
             }
-            for (const std::unique_ptr<IOperator>& op : operators) {
-                if (timeExpired() || stopRequested.load()) {
+            if (task.partIndex >= partStates.size()) {
+                continue;
+            }
+            IOperator* op = findOperator(task.operatorType);
+            if (!op) {
+                continue;
+            }
+            const PartState& target = partStates[task.partIndex];
+            if (!operatorApplies(task.operatorType, target, static_cast<size_t>(std::max(0, convergence.noImprovementSteps)))) {
+                continue;
+            }
+            incrementSummary(stepActiveMoves, task.operatorType);
+            std::vector<CandidateMove> candidates;
+            op->generateCandidates(current, target, candidates);
+            const size_t baseBudget = operatorBudget(settings, operatorStats_[task.operatorType]);
+            const size_t taskBudget = std::max<size_t>(2, std::min<size_t>(baseBudget + static_cast<size_t>(task.estimatedGain * 4.0), 24u));
+            if (candidates.size() > taskBudget) {
+                candidates.resize(taskBudget);
+            }
+
+            for (CandidateMove& candidate : candidates) {
+                if (stopRequested.load() || timeExpired()) {
                     break;
                 }
-                if (!operatorApplies(op->kind(), target, static_cast<size_t>(convergence.noImprovementSteps))) {
+                ++operatorStats_[candidate.source].attempts;
+                ++stats.evaluatedCandidates;
+                recordAttempt(candidate.source, stats);
+
+                bool deltaValid = false;
+                double deltaScore = std::numeric_limits<double>::max();
+                const bool forceFullCavityCheck = highPotentialCavityOperator(candidate.source);
+                if (candidate.isMultiPart()) {
+                    MultiDeltaMove move;
+                    move.partIndices = candidate.parts;
+                    move.newPoses = candidate.newPoses;
+                    for (size_t index : move.partIndices) {
+                        if (index < current.poses.size()) {
+                            move.oldPoses.push_back(current.poses[index]);
+                        }
+                    }
+                    if (move.oldPoses.size() != move.partIndices.size()) {
+                        continue;
+                    }
+                    MultiDeltaEvaluation delta = evaluateMultiMoveDelta(document, settings, current, cache, move);
+                    deltaValid = delta.valid;
+                    deltaScore = delta.totalScore;
+                    if (!delta.valid) {
+                        classifyRejected(delta, stats);
+                        if (!forceFullCavityCheck) {
+                            continue;
+                        }
+                    }
+                } else {
+                    if (candidate.part >= current.poses.size() || samePose(current.poses[candidate.part], candidate.newPose)) {
+                        continue;
+                    }
+                    DeltaMove move{candidate.part, current.poses[candidate.part], candidate.newPose};
+                    DeltaEvaluation delta = evaluateMoveDelta(document, settings, current, cache, move);
+                    deltaValid = delta.valid;
+                    deltaScore = delta.totalScore;
+                    if (!delta.valid) {
+                        classifyRejected(delta, stats);
+                        if (!forceFullCavityCheck) {
+                            continue;
+                        }
+                    }
+                }
+
+                const double improvement = current.totalScore - deltaScore;
+                const bool allowWorse = candidate.source == OperatorKind::Escape &&
+                    convergence.noImprovementSteps > stagnantThreshold / 2 &&
+                    deltaScore < current.totalScore + std::max(100.0, std::abs(current.totalScore) * 0.02);
+                if (!deltaValid && !forceFullCavityCheck) {
                     continue;
                 }
-                std::vector<CandidateMove> candidates;
-                op->generateCandidates(current, target, candidates);
-                const size_t budget = operatorBudget(settings, operatorStats_[op->kind()]);
-                if (candidates.size() > budget) {
-                    candidates.resize(budget);
+                if (deltaValid && improvement <= 1e-9 && !allowWorse && !forceFullCavityCheck) {
+                    ++stats.rejectedWorseMoves;
+                    continue;
                 }
 
-                for (CandidateMove& candidate : candidates) {
-                    if (stopRequested.load() || timeExpired()) {
-                        break;
-                    }
-                    ++operatorStats_[candidate.source].attempts;
-                    ++stats.evaluatedCandidates;
-                    recordAttempt(candidate.source, stats);
-
-                    bool deltaValid = false;
-                    double deltaScore = std::numeric_limits<double>::max();
-                    const bool forceFullCavityCheck = highPotentialCavityOperator(candidate.source);
-                    if (candidate.isMultiPart()) {
-                        MultiDeltaMove move;
-                        move.partIndices = candidate.parts;
-                        move.newPoses = candidate.newPoses;
-                        for (size_t index : move.partIndices) {
-                            if (index < current.poses.size()) {
-                                move.oldPoses.push_back(current.poses[index]);
-                            }
-                        }
-                        if (move.oldPoses.size() != move.partIndices.size()) {
-                            continue;
-                        }
-                        MultiDeltaEvaluation delta = evaluateMultiMoveDelta(document, settings, current, cache, move);
-                        deltaValid = delta.valid;
-                        deltaScore = delta.totalScore;
-                        if (!delta.valid) {
-                            classifyRejected(delta, stats);
-                            if (!forceFullCavityCheck) {
-                                continue;
-                            }
-                        }
-                    } else {
-                        if (candidate.part >= current.poses.size() || samePose(current.poses[candidate.part], candidate.newPose)) {
-                            continue;
-                        }
-                        DeltaMove move{candidate.part, current.poses[candidate.part], candidate.newPose};
-                        DeltaEvaluation delta = evaluateMoveDelta(document, settings, current, cache, move);
-                        deltaValid = delta.valid;
-                        deltaScore = delta.totalScore;
-                        if (!delta.valid) {
-                            classifyRejected(delta, stats);
-                            if (!forceFullCavityCheck) {
-                                continue;
-                            }
+                std::vector<Pose> poses = current.poses;
+                if (candidate.isMultiPart()) {
+                    for (size_t i = 0; i < candidate.parts.size(); ++i) {
+                        if (candidate.parts[i] < poses.size()) {
+                            poses[candidate.parts[i]] = candidate.newPoses[i];
                         }
                     }
-
-                    const double improvement = current.totalScore - deltaScore;
-                    const bool allowWorse = candidate.source == OperatorKind::Escape &&
-                        convergence.noImprovementSteps > stagnantThreshold / 2 &&
-                        deltaScore < current.totalScore + std::max(100.0, std::abs(current.totalScore) * 0.02);
-                    if (!deltaValid && !forceFullCavityCheck) {
-                        continue;
-                    }
-                    if (deltaValid && improvement <= 1e-9 && !allowWorse && !forceFullCavityCheck) {
-                        if (allowWorse) {
-                            ++stats.rejectedWorseMoves;
-                        }
-                        continue;
-                    }
-
-                    std::vector<Pose> poses = current.poses;
-                    if (candidate.isMultiPart()) {
-                        for (size_t i = 0; i < candidate.parts.size(); ++i) {
-                            if (candidate.parts[i] < poses.size()) {
-                                poses[candidate.parts[i]] = candidate.newPoses[i];
-                            }
-                        }
-                    } else {
-                        poses[candidate.part] = candidate.newPose;
-                    }
-                    LayoutState verified = scorer.evaluate(document, settings, poses, &attemptPenalties, &globalPenalties, 0.10);
-                    if (!verified.valid()) {
-                        continue;
-                    }
-                    if (verified.totalScore + 1e-9 < bestCandidateScore || (!foundMove && allowWorse)) {
-                        bestCandidateScore = verified.totalScore;
-                        bestMoveState = std::move(verified);
-                        bestMove = std::move(candidate);
-                        foundMove = true;
-                        acceptedWorse = bestMoveState.totalScore > current.totalScore + 1e-9;
-                        currentStrategy = strategyForOperator(bestMove.source);
-                    }
+                } else {
+                    poses[candidate.part] = candidate.newPose;
+                }
+                LayoutState verified = scorer.evaluate(document, settings, poses, &attemptPenalties, &globalPenalties, 0.10);
+                if (!verified.valid()) {
+                    continue;
+                }
+                const double verifiedImprovement = current.totalScore - verified.totalScore;
+                const bool improvesCurrent = verifiedImprovement > 1e-9;
+                if ((improvesCurrent && verified.totalScore + 1e-9 < bestCandidateScore) || (!foundMove && allowWorse)) {
+                    bestCandidateScore = verified.totalScore;
+                    bestMoveState = std::move(verified);
+                    bestMove = std::move(candidate);
+                    foundMove = true;
+                    acceptedWorse = bestMoveState.totalScore > current.totalScore + 1e-9;
+                    currentStrategy = strategyForOperator(bestMove.source);
                 }
             }
         }
 
+        bool bestUpdated = false;
         if (foundMove) {
             const double previousScore = current.totalScore;
             current = std::move(bestMoveState);
@@ -1020,6 +1332,9 @@ LayoutState AdaptiveUnifiedOptimizer::optimize(
             operatorStats_[bestMove.source].totalImprovement += improvement / std::max(1.0, std::abs(previousScore));
             operatorStats_[bestMove.source].lastImprovementTime = elapsedSeconds(started);
             recordAccepted(bestMove.source, stats);
+            const uint64_t acceptedKey = partOperatorKey(bestMove.part, bestMove.source);
+            const double currentBias = partOperatorBias.count(acceptedKey) != 0 ? partOperatorBias[acceptedKey] : 1.0;
+            partOperatorBias[acceptedKey] = std::min(2.5, currentBias + 0.25);
             if (acceptedWorse) {
                 ++stats.acceptedWorseMoves;
             }
@@ -1028,11 +1343,18 @@ LayoutState AdaptiveUnifiedOptimizer::optimize(
                 ++stats.bestUpdates;
                 convergence.noImprovementSteps = 0;
                 convergence.lastBestScore = best.totalScore;
+                bestUpdated = true;
             } else {
                 ++convergence.noImprovementSteps;
             }
         } else {
             ++convergence.noImprovementSteps;
+            const size_t penaltyLimit = std::min<size_t>(tasks.size(), 12u);
+            for (size_t i = 0; i < penaltyLimit; ++i) {
+                const uint64_t key = partOperatorKey(tasks[i].partIndex, tasks[i].operatorType);
+                const double currentBias = partOperatorBias.count(key) != 0 ? partOperatorBias[key] : 1.0;
+                partOperatorBias[key] = std::max(0.35, currentBias * 0.88);
+            }
         }
 
         const size_t hash = layoutHash(current);
@@ -1048,15 +1370,29 @@ LayoutState AdaptiveUnifiedOptimizer::optimize(
             convergence.lowAcceptanceSteps = 0;
         }
 
-        publish();
+        if (foundMove) {
+            ++versionId;
+            publish(stepActiveMoves, true, bestMove, bestUpdated);
+        }
 
         const bool utilizationPlateau = best.utilization <= current.utilization + 1e-6 &&
             convergence.noImprovementSteps > stagnantThreshold;
         const bool repeated = convergence.repeatedLayouts >= 4;
         const bool lowAcceptance = convergence.lowAcceptanceSteps > stagnantThreshold / 2;
-        if (convergence.noImprovementSteps > stagnantThreshold ||
-            (utilizationPlateau && lowAcceptance) ||
-            repeated) {
+        const bool exploredThisStep = summaryTotal(stepActiveMoves) > 0.0;
+        const bool stillHasPotential =
+            convergence.highPotentialParts > std::max<size_t>(1u, document.parts.size() / 140u) ||
+            convergence.promisingTasks > std::max<size_t>(2u, tasks.size() / 6u);
+        const bool stronglyStalled =
+            convergence.noImprovementSteps > stagnantThreshold * 3 &&
+            lowAcceptance &&
+            repeated &&
+            exploredThisStep;
+        if ((!stillHasPotential &&
+             (convergence.noImprovementSteps > stagnantThreshold ||
+              (utilizationPlateau && lowAcceptance) ||
+              repeated)) ||
+            stronglyStalled) {
             break;
         }
     }

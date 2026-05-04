@@ -2,6 +2,7 @@
 
 #include "core/polygon.h"
 #include <cstddef>
+#include <cstdint>
 #include <vector>
 
 namespace nest {
@@ -45,6 +46,25 @@ enum class SolverStrategy {
     Done
 };
 
+inline constexpr size_t kNoPartIndex = static_cast<size_t>(-1);
+
+struct ActiveMoveSummary {
+    size_t contact = 0;
+    size_t compression = 0;
+    size_t gap = 0;
+    size_t hole = 0;
+    size_t concavity = 0;
+    size_t smallPart = 0;
+    size_t swap = 0;
+    size_t chain = 0;
+    size_t cluster = 0;
+    size_t region = 0;
+    size_t rotation = 0;
+    size_t mirror = 0;
+    size_t escape = 0;
+    size_t frontier = 0;
+};
+
 struct SolverStats {
     size_t evaluatedCandidates = 0;
     size_t acceptedMoves = 0;
@@ -76,6 +96,8 @@ struct SolverStats {
     size_t frontierCandidates = 0;
     size_t smallFillerAccepted = 0;
     size_t regionRepackAccepted = 0;
+    ActiveMoveSummary activeMoveSummary;
+    ActiveMoveSummary acceptedMoveSummary;
 };
 
 struct SolverSnapshot {
@@ -91,6 +113,12 @@ struct SolverSnapshot {
     size_t invalidPartCount = 0;
     SolverStats stats;
     SolverStrategy currentStrategy = SolverStrategy::Idle;
+    ActiveMoveSummary activeMoves;
+    uint64_t versionId = 0;
+    bool layoutChanged = false;
+    size_t lastMovedPart = kNoPartIndex;
+    SolverStrategy lastMoveStrategy = SolverStrategy::Idle;
+    bool bestUpdated = false;
     bool running = false;
 };
 
@@ -103,6 +131,7 @@ struct SolverResult {
     size_t invalidPartCount = 0;
     SolverStats stats;
     SolverStrategy currentStrategy = SolverStrategy::Idle;
+    uint64_t versionId = 0;
     bool valid = false;
 };
 

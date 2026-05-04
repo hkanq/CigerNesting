@@ -279,7 +279,7 @@
     {"part": 249, "x": 145.687406, "y": -1091.000000, "angleRadians": 0.000000, "mirrored": false}
   ],
   "score": {
-    "totalScore": 136546.704896,
+    "totalScore": -453.295104,
     "utilization": 0.528528,
     "usedWidth": 2228.000000,
     "usedHeight": 119.000000,
@@ -289,19 +289,19 @@
     "sheetPenalty": 0.000000
   },
   "stats": {
-    "elapsedMs": 3475.433500,
-    "evaluatedCandidates": 502,
-    "candidatesPerSecond": 144.442413,
-    "acceptedMoves": 1,
-    "acceptedWorseMoves": 1,
+    "elapsedMs": 171.393800,
+    "evaluatedCandidates": 0,
+    "candidatesPerSecond": 0.000000,
+    "acceptedMoves": 0,
+    "acceptedWorseMoves": 0,
     "bestUpdates": 1,
-    "gapAccepted": 1,
+    "gapAccepted": 0,
     "swapAccepted": 0,
     "chainAccepted": 0,
     "escapeAccepted": 0,
     "ultraAccepted": 0,
     "compactionAccepted": 0,
-    "frontierCandidates": 70,
+    "frontierCandidates": 0,
     "smallFillerAccepted": 0,
     "regionRepackAccepted": 0
   }

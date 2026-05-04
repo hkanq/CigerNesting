@@ -38,7 +38,7 @@
     {"part": 8, "x": 416.173024, "y": -122.525579, "angleRadians": 1.570796, "mirrored": false},
     {"part": 9, "x": 255.396015, "y": -275.687713, "angleRadians": 1.570796, "mirrored": false},
     {"part": 10, "x": 473.867016, "y": -364.412580, "angleRadians": 1.570796, "mirrored": false},
-    {"part": 11, "x": 732.862052, "y": -453.623251, "angleRadians": 1.570796, "mirrored": false},
+    {"part": 11, "x": 720.262052, "y": -453.623251, "angleRadians": 1.570796, "mirrored": false},
     {"part": 12, "x": 421.697682, "y": 53.751006, "angleRadians": 1.570796, "mirrored": false},
     {"part": 13, "x": -2.853683, "y": 182.375460, "angleRadians": 4.712389, "mirrored": false},
     {"part": 14, "x": 492.546278, "y": -188.278953, "angleRadians": 1.570796, "mirrored": false},
@@ -47,7 +47,7 @@
     {"part": 17, "x": 249.946130, "y": -451.571533, "angleRadians": 1.570796, "mirrored": false},
     {"part": 18, "x": 512.204001, "y": -12.155293, "angleRadians": 1.570796, "mirrored": false},
     {"part": 19, "x": 758.084051, "y": -101.228692, "angleRadians": 1.570796, "mirrored": false},
-    {"part": 20, "x": 377.098356, "y": -124.873046, "angleRadians": 1.570796, "mirrored": false},
+    {"part": 20, "x": 377.098356, "y": -121.723046, "angleRadians": 1.570796, "mirrored": false},
     {"part": 21, "x": 277.804350, "y": -275.528710, "angleRadians": 1.570796, "mirrored": false},
     {"part": 22, "x": 474.851255, "y": -364.041638, "angleRadians": 1.570796, "mirrored": false},
     {"part": 23, "x": 714.047368, "y": -453.045900, "angleRadians": 1.570796, "mirrored": false},
@@ -55,9 +55,9 @@
     {"part": 25, "x": 306.729548, "y": -99.496082, "angleRadians": 1.570796, "mirrored": false}
   ],
   "score": {
-    "totalScore": 84293.033657,
-    "utilization": 0.236399,
-    "usedWidth": 663.001312,
+    "totalScore": 83041.812452,
+    "utilization": 0.240979,
+    "usedWidth": 650.401312,
     "usedHeight": 131.382887,
     "collisions": 0,
     "invalid": 0,
@@ -65,9 +65,9 @@
     "sheetPenalty": 0.000000
   },
   "stats": {
-    "elapsedMs": 145.187900,
-    "evaluatedCandidates": 2016,
-    "candidatesPerSecond": 13885.454642,
+    "elapsedMs": 105.013700,
+    "evaluatedCandidates": 1415,
+    "candidatesPerSecond": 13474.432384,
     "acceptedMoves": 1,
     "acceptedWorseMoves": 0,
     "bestUpdates": 2,
@@ -77,7 +77,7 @@
     "escapeAccepted": 0,
     "ultraAccepted": 0,
     "compactionAccepted": 1,
-    "frontierCandidates": 280,
+    "frontierCandidates": 180,
     "smallFillerAccepted": 0,
     "regionRepackAccepted": 0
   }

@@ -21,7 +21,7 @@ constexpr double kUsedAreaPenalty = 1.0;
 constexpr double kUtilizationReward = 10000.0;
 constexpr double kCompactnessReward = 0.02;
 constexpr double kCavityReward = 500000.0;
-constexpr double kContactReward = 450.0;
+constexpr double kContactReward = 950.0;
 
 double clearanceDeficit(double required, double actual) {
     if (!std::isfinite(actual)) {

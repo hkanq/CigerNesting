@@ -84,6 +84,41 @@ TextId textIdForStrategy(SolverStrategy strategy) {
     return TextId::Idle;
 }
 
+void appendMoveCount(std::wostringstream& out, bool& first, TextId label, size_t count) {
+    if (count == 0) {
+        return;
+    }
+    if (!first) {
+        out << L", ";
+    }
+    first = false;
+    out << Localization::instance().text(label) << L" " << count;
+}
+
+std::wstring activeMovesText(const SolverSnapshot& snapshot) {
+    std::wostringstream out;
+    const ActiveMoveSummary& moves = snapshot.activeMoves;
+    bool first = true;
+    appendMoveCount(out, first, TextId::ContactPacking, moves.contact);
+    appendMoveCount(out, first, TextId::Compression, moves.compression);
+    appendMoveCount(out, first, TextId::GapFilling, moves.gap);
+    appendMoveCount(out, first, TextId::HoleFilling, moves.hole);
+    appendMoveCount(out, first, TextId::ConcavityFilling, moves.concavity);
+    appendMoveCount(out, first, TextId::SmallPartFiller, moves.smallPart);
+    appendMoveCount(out, first, TextId::Swap, moves.swap);
+    appendMoveCount(out, first, TextId::EjectionChain, moves.chain);
+    appendMoveCount(out, first, TextId::ClusterRepack, moves.cluster);
+    appendMoveCount(out, first, TextId::RegionRepack, moves.region);
+    appendMoveCount(out, first, TextId::UltraRefinement, moves.rotation);
+    appendMoveCount(out, first, TextId::Mirror, moves.mirror);
+    appendMoveCount(out, first, TextId::Escape, moves.escape);
+    appendMoveCount(out, first, TextId::Frontier, moves.frontier);
+    if (first) {
+        out << Localization::instance().text(textIdForStrategy(snapshot.currentStrategy));
+    }
+    return out.str();
+}
+
 std::wstring phaseLine(const SolverSnapshot& snapshot) {
     const auto& loc = Localization::instance();
     std::wostringstream out;
@@ -94,7 +129,7 @@ std::wstring phaseLine(const SolverSnapshot& snapshot) {
     if (terminal) {
         out << loc.text(textIdForPhase(snapshot.phase));
     } else {
-        out << loc.text(TextId::CurrentStrategy) << L": " << loc.text(textIdForStrategy(snapshot.currentStrategy));
+        out << loc.text(TextId::ActiveMoves) << L": " << activeMovesText(snapshot);
     }
     out << L"  " << static_cast<int>(snapshot.progress * 100.0) << L"%";
     return out.str();

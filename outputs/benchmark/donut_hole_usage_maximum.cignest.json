@@ -40,7 +40,7 @@
     {"part": 10, "x": 89.000000, "y": -171.000000, "angleRadians": 1.570796, "mirrored": false}
   ],
   "score": {
-    "totalScore": 13646.949548,
+    "totalScore": 8646.949548,
     "utilization": 0.820576,
     "usedWidth": 171.000000,
     "usedHeight": 157.000000,
@@ -50,19 +50,19 @@
     "sheetPenalty": 0.000000
   },
   "stats": {
-    "elapsedMs": 1162.116200,
-    "evaluatedCandidates": 8106,
-    "candidatesPerSecond": 6975.206094,
-    "acceptedMoves": 8,
+    "elapsedMs": 7864.333200,
+    "evaluatedCandidates": 45496,
+    "candidatesPerSecond": 5785.105850,
+    "acceptedMoves": 1,
     "acceptedWorseMoves": 0,
     "bestUpdates": 4,
-    "gapAccepted": 8,
+    "gapAccepted": 1,
     "swapAccepted": 0,
     "chainAccepted": 0,
     "escapeAccepted": 0,
     "ultraAccepted": 0,
     "compactionAccepted": 0,
-    "frontierCandidates": 1134,
+    "frontierCandidates": 5002,
     "smallFillerAccepted": 0,
     "regionRepackAccepted": 0
   }

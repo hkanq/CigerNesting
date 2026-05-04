@@ -52,7 +52,7 @@
     {"part": 22, "x": 355.000000, "y": -204.000000, "angleRadians": 0.000000, "mirrored": false},
     {"part": 23, "x": 186.000000, "y": 88.000000, "angleRadians": 0.000000, "mirrored": false},
     {"part": 24, "x": 205.000000, "y": 30.000000, "angleRadians": 0.000000, "mirrored": false},
-    {"part": 25, "x": 253.500000, "y": -75.000000, "angleRadians": 0.000000, "mirrored": false},
+    {"part": 25, "x": 67.250000, "y": -192.000000, "angleRadians": 0.000000, "mirrored": false},
     {"part": 26, "x": 451.000000, "y": 30.000000, "angleRadians": 0.000000, "mirrored": false},
     {"part": 27, "x": 74.000000, "y": 30.000000, "angleRadians": 0.000000, "mirrored": false},
     {"part": 28, "x": -275.000000, "y": -2.000000, "angleRadians": 0.000000, "mirrored": false},
@@ -65,7 +65,7 @@
     {"part": 35, "x": -110.000000, "y": -320.000000, "angleRadians": 0.000000, "mirrored": false}
   ],
   "score": {
-    "totalScore": 256755.731936,
+    "totalScore": 241255.731936,
     "utilization": 0.118427,
     "usedWidth": 795.000000,
     "usedHeight": 342.000000,
@@ -75,9 +75,9 @@
     "sheetPenalty": 0.000000
   },
   "stats": {
-    "elapsedMs": 1527.978000,
-    "evaluatedCandidates": 1293,
-    "candidatesPerSecond": 846.216372,
+    "elapsedMs": 961.733100,
+    "evaluatedCandidates": 359,
+    "candidatesPerSecond": 373.284438,
     "acceptedMoves": 1,
     "acceptedWorseMoves": 0,
     "bestUpdates": 1,
@@ -87,7 +87,7 @@
     "escapeAccepted": 0,
     "ultraAccepted": 0,
     "compactionAccepted": 0,
-    "frontierCandidates": 126,
+    "frontierCandidates": 0,
     "smallFillerAccepted": 0,
     "regionRepackAccepted": 0
   }

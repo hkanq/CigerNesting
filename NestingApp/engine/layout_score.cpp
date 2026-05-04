@@ -19,7 +19,7 @@ constexpr double kUsedAreaPenalty = 1.0;
 constexpr double kUtilizationReward = 10000.0;
 constexpr double kCompactnessReward = 0.02;
 constexpr double kCavityReward = 500000.0;
-constexpr double kContactReward = 450.0;
+constexpr double kContactReward = 950.0;
 
 double safeSheetArea(const Document& document) {
     return std::max(1.0, (document.sheet.width - document.sheet.margin * 2.0) * (document.sheet.height - document.sheet.margin * 2.0));

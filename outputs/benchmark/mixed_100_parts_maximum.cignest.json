@@ -91,7 +91,7 @@
     {"part": 61, "x": -126.000000, "y": -397.000000, "angleRadians": 0.000000, "mirrored": false},
     {"part": 62, "x": -192.000000, "y": -12.000000, "angleRadians": 0.000000, "mirrored": false},
     {"part": 63, "x": -308.000000, "y": 297.000000, "angleRadians": 0.000000, "mirrored": false},
-    {"part": 64, "x": -425.848698, "y": -468.061908, "angleRadians": 0.000000, "mirrored": false},
+    {"part": 64, "x": -423.848698, "y": -468.061908, "angleRadians": 0.000000, "mirrored": false},
     {"part": 65, "x": -507.000000, "y": 39.174987, "angleRadians": 0.000000, "mirrored": false},
     {"part": 66, "x": -706.000000, "y": -251.000000, "angleRadians": 0.000000, "mirrored": false},
     {"part": 67, "x": -772.000000, "y": -106.802788, "angleRadians": 0.000000, "mirrored": false},
@@ -129,7 +129,7 @@
     {"part": 99, "x": -971.000000, "y": -150.825013, "angleRadians": 0.000000, "mirrored": false}
   ],
   "score": {
-    "totalScore": 44882.854608,
+    "totalScore": -5667.145392,
     "utilization": 0.575713,
     "usedWidth": 106.000000,
     "usedHeight": 915.000000,
@@ -139,19 +139,19 @@
     "sheetPenalty": 0.000000
   },
   "stats": {
-    "elapsedMs": 8804.055000,
-    "evaluatedCandidates": 3901,
-    "candidatesPerSecond": 443.091280,
-    "acceptedMoves": 1,
+    "elapsedMs": 318.964600,
+    "evaluatedCandidates": 0,
+    "candidatesPerSecond": 0.000000,
+    "acceptedMoves": 0,
     "acceptedWorseMoves": 0,
-    "bestUpdates": 3,
+    "bestUpdates": 2,
     "gapAccepted": 0,
     "swapAccepted": 0,
     "chainAccepted": 0,
     "escapeAccepted": 0,
     "ultraAccepted": 0,
-    "compactionAccepted": 1,
-    "frontierCandidates": 546,
+    "compactionAccepted": 0,
+    "frontierCandidates": 0,
     "smallFillerAccepted": 0,
     "regionRepackAccepted": 0
   }

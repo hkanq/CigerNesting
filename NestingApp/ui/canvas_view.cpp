@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <sstream>
+#include <string>
 
 namespace nest {
 namespace {
@@ -81,6 +82,41 @@ TextId textIdForStrategy(SolverStrategy strategy) {
     return TextId::Idle;
 }
 
+void appendMoveCount(std::wostringstream& out, bool& first, TextId label, size_t count) {
+    if (count == 0) {
+        return;
+    }
+    if (!first) {
+        out << L", ";
+    }
+    first = false;
+    out << Localization::instance().text(label) << L" " << count;
+}
+
+std::wstring activeMovesText(const SolverSnapshot& snapshot) {
+    std::wostringstream out;
+    const ActiveMoveSummary& moves = snapshot.activeMoves;
+    bool first = true;
+    appendMoveCount(out, first, TextId::ContactPacking, moves.contact);
+    appendMoveCount(out, first, TextId::Compression, moves.compression);
+    appendMoveCount(out, first, TextId::GapFilling, moves.gap);
+    appendMoveCount(out, first, TextId::HoleFilling, moves.hole);
+    appendMoveCount(out, first, TextId::ConcavityFilling, moves.concavity);
+    appendMoveCount(out, first, TextId::SmallPartFiller, moves.smallPart);
+    appendMoveCount(out, first, TextId::Swap, moves.swap);
+    appendMoveCount(out, first, TextId::EjectionChain, moves.chain);
+    appendMoveCount(out, first, TextId::ClusterRepack, moves.cluster);
+    appendMoveCount(out, first, TextId::RegionRepack, moves.region);
+    appendMoveCount(out, first, TextId::UltraRefinement, moves.rotation);
+    appendMoveCount(out, first, TextId::Mirror, moves.mirror);
+    appendMoveCount(out, first, TextId::Escape, moves.escape);
+    appendMoveCount(out, first, TextId::Frontier, moves.frontier);
+    if (first) {
+        out << Localization::instance().text(textIdForStrategy(snapshot.currentStrategy));
+    }
+    return out.str();
+}
+
 } // namespace
 
 bool CanvasView::create(HWND parent, HINSTANCE instance) {
@@ -103,6 +139,15 @@ void CanvasView::setDocument(Document* document) {
 }
 
 void CanvasView::setSnapshot(const SolverSnapshot& snapshot) {
+    if (hasSnapshot_ &&
+        snapshot.versionId == snapshot_.versionId &&
+        !snapshot.layoutChanged &&
+        snapshot.phase == snapshot_.phase &&
+        snapshot.currentStrategy == snapshot_.currentStrategy &&
+        snapshot.collisionCount == snapshot_.collisionCount &&
+        std::abs(snapshot.utilization - snapshot_.utilization) < 1e-9) {
+        return;
+    }
     snapshot_ = snapshot;
     hasSnapshot_ = !snapshot.currentPoses.empty() || !snapshot.bestPoses.empty();
     if (hwnd_) {
@@ -257,10 +302,13 @@ void CanvasView::drawDocument(IRenderer& renderer) {
             for (const auto& point : ring.points) {
                 screenPoints.push_back(worldToScreen(transform.apply(point)));
             }
+            const bool movedPart = hasSnapshot_ && snapshot_.lastMovedPart == i && snapshot_.layoutChanged;
+            const Color stroke = movedPart ? Color{220, 74, 42, 255} : Color{32, 68, 74, 255};
+            const double strokeWidth = movedPart ? 3.0 : 1.5;
             if (ring.points.size() >= 3 && ring.closed()) {
-                renderer.drawPolygon(screenPoints, ring.isHole ? Color{255, 255, 255, 255} : partFill(i), {32, 68, 74, 255}, 1.5);
+                renderer.drawPolygon(screenPoints, ring.isHole ? Color{255, 255, 255, 255} : partFill(i), stroke, strokeWidth);
             } else {
-                renderer.drawPolyline(screenPoints, {32, 68, 74, 255}, 1.5);
+                renderer.drawPolyline(screenPoints, stroke, strokeWidth);
             }
         }
     }
@@ -272,11 +320,20 @@ void CanvasView::drawDocument(IRenderer& renderer) {
             snapshot_.phase == SolverPhase::NoValidLayout ||
             snapshot_.phase == SolverPhase::Failed ||
             snapshot_.phase == SolverPhase::Stopped;
-        overlay << (terminal ? loc.text(TextId::Phase) : loc.text(TextId::CurrentStrategy))
-                << L": " << loc.text(terminal ? textIdForPhase(snapshot_.phase) : textIdForStrategy(snapshot_.currentStrategy))
+        overlay << (terminal ? loc.text(TextId::Phase) : loc.text(TextId::ActiveMoves))
+                << L": " << (terminal ? loc.text(textIdForPhase(snapshot_.phase)) : activeMovesText(snapshot_))
                 << L"  |  " << loc.text(TextId::Collision) << L": " << snapshot_.collisionCount
                 << L"  |  " << loc.text(TextId::Utilization) << L": " << static_cast<int>(snapshot_.utilization * 100.0) << L"%";
         renderer.drawText({18, 18}, overlay.str(), {40, 52, 60, 255});
+        if (snapshot_.lastMovedPart != kNoPartIndex && !terminal) {
+            std::wostringstream debug;
+            debug << loc.text(TextId::LastMove) << L": #" << snapshot_.lastMovedPart
+                  << L" " << loc.text(textIdForStrategy(snapshot_.lastMoveStrategy));
+            if (snapshot_.bestUpdated) {
+                debug << L" | " << loc.text(TextId::BestUpdate);
+            }
+            renderer.drawText({18, 42}, debug.str(), {148, 65, 35, 255});
+        }
     }
 }
 

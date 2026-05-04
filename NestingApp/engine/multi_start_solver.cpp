@@ -445,19 +445,44 @@ LayoutState MultiStartSolver::solve(
     }
     LayoutState current = best;
     if (callback) {
-        callback({SolverPhase::InitialPlacement, SolverStrategy::AdaptiveSearch, 0.12, current, best, elapsedSeconds(started), aggregateStats});
+        SolverProgress progress;
+        progress.phase = SolverPhase::InitialPlacement;
+        progress.currentStrategy = SolverStrategy::AdaptiveSearch;
+        progress.progress = 0.12;
+        progress.current = current;
+        progress.best = best;
+        progress.elapsedSeconds = elapsedSeconds(started);
+        progress.stats = aggregateStats;
+        progress.versionId = 1;
+        progress.layoutChanged = true;
+        progress.bestUpdated = true;
+        callback(progress);
     }
 
     aggregateStats.workerCount = 1;
     aggregateStats.attemptsStarted = 1;
     AdaptiveUnifiedOptimizer optimizer;
     const double totalLimit = effectiveSafetyTimeLimitSeconds(settings, document.parts.size());
-    best = optimizer.optimize(document, settings, std::move(best), globalPenalty, stopRequested, aggregateStats, [&](SolverStrategy strategy, const LayoutState& optimizerCurrent, const LayoutState& optimizerBest, const SolverStats& stats) {
+    best = optimizer.optimize(document, settings, std::move(best), globalPenalty, stopRequested, aggregateStats, [&](const AdaptiveProgressEvent& event) {
         if (!callback) {
             return;
         }
         const double progress = std::min(0.96, 0.12 + elapsedSeconds(started) / std::max(0.25, totalLimit) * 0.82);
-        callback({SolverPhase::Exploration, strategy, progress, optimizerCurrent, optimizerBest, elapsedSeconds(started), stats});
+        SolverProgress solverProgress;
+        solverProgress.phase = SolverPhase::Exploration;
+        solverProgress.currentStrategy = event.strategy;
+        solverProgress.progress = progress;
+        solverProgress.current = event.current;
+        solverProgress.best = event.best;
+        solverProgress.elapsedSeconds = elapsedSeconds(started);
+        solverProgress.stats = event.stats;
+        solverProgress.activeMoves = event.activeMoves;
+        solverProgress.versionId = event.versionId;
+        solverProgress.layoutChanged = event.layoutChanged;
+        solverProgress.lastMovedPart = event.lastMovedPart;
+        solverProgress.lastMoveStrategy = event.lastMoveStrategy;
+        solverProgress.bestUpdated = event.bestUpdated;
+        callback(solverProgress);
     });
     current = best;
     aggregateStats.attemptsCompleted = 1;

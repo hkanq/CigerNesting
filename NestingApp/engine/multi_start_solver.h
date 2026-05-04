@@ -19,6 +19,12 @@ struct SolverProgress {
     LayoutState best;
     double elapsedSeconds = 0.0;
     SolverStats stats;
+    ActiveMoveSummary activeMoves;
+    uint64_t versionId = 0;
+    bool layoutChanged = false;
+    size_t lastMovedPart = kNoPartIndex;
+    SolverStrategy lastMoveStrategy = SolverStrategy::Idle;
+    bool bestUpdated = false;
 };
 
 using SolverProgressCallback = std::function<void(const SolverProgress&)>;

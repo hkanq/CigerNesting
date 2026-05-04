@@ -8,6 +8,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <unordered_map>
 #include <vector>
@@ -46,6 +47,21 @@ struct CandidateMove {
     }
 };
 
+struct PartNeed {
+    double needsCompression = 0.0;
+    double needsRotation = 0.0;
+    double needsMirror = 0.0;
+    double needsHoleFilling = 0.0;
+    double needsConcavityFitting = 0.0;
+    double needsGapMove = 0.0;
+    double needsSwap = 0.0;
+    double needsEscape = 0.0;
+    double blocksOthers = 0.0;
+    double wastedSpaceAround = 0.0;
+    double boundaryContribution = 0.0;
+    double mobilityScore = 0.0;
+};
+
 struct PartState {
     PartId part = 0;
     bool nearBoundary = false;
@@ -57,7 +73,17 @@ struct PartState {
     bool rotationSensitive = false;
     bool mirrorSensitive = false;
     double priority = 0.0;
+    double sizeRank = 0.0;
+    double potentialScore = 0.0;
     size_t neighborCount = 0;
+    PartNeed need;
+};
+
+struct MoveTask {
+    PartId partIndex = 0;
+    OperatorKind operatorType = OperatorKind::Compression;
+    double priority = 0.0;
+    double estimatedGain = 0.0;
 };
 
 struct OperatorStats {
@@ -79,6 +105,8 @@ struct ConvergenceState {
     int repeatedLayouts = 0;
     int lowAcceptanceSteps = 0;
     size_t lastAcceptedMoves = 0;
+    size_t highPotentialParts = 0;
+    size_t promisingTasks = 0;
 };
 
 class IOperator {
@@ -91,7 +119,20 @@ public:
         std::vector<CandidateMove>& out) = 0;
 };
 
-using AdaptiveProgressCallback = std::function<void(SolverStrategy, const LayoutState&, const LayoutState&, const SolverStats&)>;
+struct AdaptiveProgressEvent {
+    SolverStrategy strategy = SolverStrategy::AdaptiveSearch;
+    LayoutState current;
+    LayoutState best;
+    SolverStats stats;
+    ActiveMoveSummary activeMoves;
+    uint64_t versionId = 0;
+    bool layoutChanged = false;
+    size_t lastMovedPart = kNoPartIndex;
+    SolverStrategy lastMoveStrategy = SolverStrategy::Idle;
+    bool bestUpdated = false;
+};
+
+using AdaptiveProgressCallback = std::function<void(const AdaptiveProgressEvent&)>;
 
 SolverStrategy strategyForOperator(OperatorKind kind);
 
