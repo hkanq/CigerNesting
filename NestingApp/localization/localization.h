@@ -57,6 +57,7 @@ enum class TextId {
     CollisionResolution,
     Compression,
     GapFilling,
+    Rearrangement,
     UltraRefinement,
     FinalValidation,
     Done,

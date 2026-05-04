@@ -14,6 +14,7 @@ enum class SolverPhase {
     CollisionResolution,
     Compression,
     GapFilling,
+    Rearrangement,
     UltraRefinement,
     FinalValidation,
     Done,
@@ -34,6 +35,17 @@ struct SolverStats {
     double candidatesPerSecond = 0.0;
     size_t cacheHits = 0;
     size_t cacheMisses = 0;
+    size_t swapAttempts = 0;
+    size_t swapAccepted = 0;
+    size_t chainAttempts = 0;
+    size_t chainAccepted = 0;
+    size_t clusterAttempts = 0;
+    size_t clusterAccepted = 0;
+    size_t acceptedWorseMoves = 0;
+    size_t rejectedWorseMoves = 0;
+    size_t tabuRejected = 0;
+    size_t escapeAttempts = 0;
+    size_t escapeAccepted = 0;
 };
 
 struct SolverSnapshot {

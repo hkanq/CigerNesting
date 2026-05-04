@@ -16,6 +16,17 @@ void mergeStats(SolverStats& target, const SolverStats& source) {
     target.rejectedSheet += source.rejectedSheet;
     target.cacheHits += source.cacheHits;
     target.cacheMisses += source.cacheMisses;
+    target.swapAttempts += source.swapAttempts;
+    target.swapAccepted += source.swapAccepted;
+    target.chainAttempts += source.chainAttempts;
+    target.chainAccepted += source.chainAccepted;
+    target.clusterAttempts += source.clusterAttempts;
+    target.clusterAccepted += source.clusterAccepted;
+    target.acceptedWorseMoves += source.acceptedWorseMoves;
+    target.rejectedWorseMoves += source.rejectedWorseMoves;
+    target.tabuRejected += source.tabuRejected;
+    target.escapeAttempts += source.escapeAttempts;
+    target.escapeAccepted += source.escapeAccepted;
 }
 
 void classifyCandidate(const DeltaEvaluation& trial, SolverStats& stats) {

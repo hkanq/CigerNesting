@@ -145,9 +145,10 @@ The solver is no longer limited to a single demo row placement pass. `NestingEng
 - `Compression` searches for safe movement with large-to-small step refinement and only accepts score-improving valid moves
 - `FreeSpaceAnalyzer` extracts sheet, contour, hole, concavity, used-bounds, and forbidden-zone placement opportunities from the current layout
 - `GapFilling` moves small parts into high-value cavities after compression, using delta scoring first and full contour validation before accepting a move
+- `Rearrangement` tries valid multi-part moves after gap filling: swaps, short ejection chains, and small cluster compaction
 - `MultiStartSolver` runs attempts in parallel through the internal worker pool, cycling placement strategies, seeds, and part orderings within `timeLimitSeconds`, while preserving best-so-far
 - `UltraRefinement` refines the best layout locally with angle ladders, micro-translation correction, optional mirroring, and strict contour validation
-- `SolverStats` reports evaluated candidates, accepted moves, rejection reasons, attempts, worker count, cache hits, elapsed time, and candidates/second
+- `SolverStats` reports evaluated candidates, accepted moves, rejection reasons, attempts, worker count, cache hits, swap/chain/cluster move counts, elapsed time, and candidates/second
 - `LayoutEvalCache` supports incremental delta scoring for single-part candidate moves, avoiding full layout rescoring for every rejected candidate
 
 Solver quality smoke test target:
@@ -172,6 +173,12 @@ Gap filling smoke target:
 
 ```powershell
 build\NestingApp\Release\CigerNestingGapFillingSmoke.exe
+```
+
+Rearrangement smoke target:
+
+```powershell
+build\NestingApp\Release\CigerNestingRearrangementSmoke.exe
 ```
 
 The stress smoke generates 100, 250, and 500-part synthetic documents and reports Fast/Balanced/Maximum profile throughput. It is intentionally bounded so it can run as a smoke test; full long-running benchmark sweeps should use the main solver with larger `timeLimitSeconds`.
@@ -202,6 +209,22 @@ The solver now has a cavity-aware pass between compression and ultra refinement:
 The pass targets smaller parts first, roughly the lower 30% by footprint, so holes in donut/B-like parts and concave notches are tried before spending budget on large pieces. Each candidate is evaluated with `LayoutEvalCache::evaluateMoveDelta`; accepted candidates are then rechecked with full `LayoutScore`, real contour collision, clearance, sheet containment, and sheet margin rules.
 
 `LayoutScore` also includes a small cavity-placement reward when a part is validly inside another part's hole. This does not relax collision or clearance. It only helps the search prefer equally valid compact layouts that actively use internal voids.
+
+## Rearrangement
+
+The solver now includes a multi-part rearrangement pass between gap filling and ultra refinement:
+
+- swap moves exchange two small/medium parts by exact pose and center-preserving variants, then require full `LayoutScore` validity
+- ejection-chain v1 moves a small part into a hole/gap/concavity anchor, identifies a small set of conflicting parts, and relocates those conflicts to nearby free-space anchors
+- cluster compaction picks 3-8 nearby parts and tries safe group movement plus intra-cluster shrinking to reduce used area
+
+Profile budgets:
+
+- `Fast`: shallow pass, chain depth 1, small swap/cluster budgets
+- `Balanced`: chain depth 2 and moderate swap/cluster budgets
+- `Maximum`: chain depth 3, up to 5 affected parts, larger anchor and cluster budgets
+
+Multi-part moves use full-score fallback instead of pretending they are single-part delta moves. A candidate is accepted only if the final layout is valid: zero collision, zero spacing penalty, zero invalid parts, and valid sheet containment.
 
 ## Performance Profiles
 
@@ -244,5 +267,6 @@ Each accepted refinement must improve score and remain valid: no part collision,
 - Direct2D, GPU evaluation, AI import, and Corel macro installation are intentionally not implemented yet.
 - The solver is now collision-driven v1 with parallel multi-start, but contact candidates are still geometric heuristics rather than a full NFP engine.
 - Gap filling is hole-aware and concavity-aware, but concavity detection is currently based on local reflex vertices rather than a full medial-axis/free-space decomposition.
+- Rearrangement uses bounded swap/ejection/cluster heuristics. It is not yet a full combinatorial optimizer and does not yet do multi-part delta scoring.
 - Performance stress smoke is bounded and deterministic; it is not a substitute for long industrial benchmark runs.
 - Delta scoring currently optimizes single-part moves; multi-part coupled moves still need full verification/future delta extensions.

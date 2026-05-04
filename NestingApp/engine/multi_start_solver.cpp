@@ -6,6 +6,7 @@
 #include "engine/overlap_resolver.h"
 #include "engine/parallel_collision_evaluator.h"
 #include "engine/pose_sampler.h"
+#include "engine/rearrangement.h"
 #include "engine/ultra_refinement.h"
 #include "engine/worker_pool.h"
 #include <algorithm>
@@ -214,6 +215,17 @@ void mergeStats(SolverStats& target, const SolverStats& source) {
     target.bestUpdates += source.bestUpdates;
     target.cacheHits += source.cacheHits;
     target.cacheMisses += source.cacheMisses;
+    target.swapAttempts += source.swapAttempts;
+    target.swapAccepted += source.swapAccepted;
+    target.chainAttempts += source.chainAttempts;
+    target.chainAccepted += source.chainAccepted;
+    target.clusterAttempts += source.clusterAttempts;
+    target.clusterAccepted += source.clusterAccepted;
+    target.acceptedWorseMoves += source.acceptedWorseMoves;
+    target.rejectedWorseMoves += source.rejectedWorseMoves;
+    target.tabuRejected += source.tabuRejected;
+    target.escapeAttempts += source.escapeAttempts;
+    target.escapeAccepted += source.escapeAccepted;
 }
 
 void refreshTimingStats(SolverStats& stats, Clock::time_point started) {
@@ -403,6 +415,7 @@ LayoutState MultiStartSolver::solve(
             OverlapResolver resolver;
             Compression compression;
             GapFilling gapFilling;
+            Rearrangement rearrangement;
             LayoutScore localScorer;
             const size_t candidateThreads = std::max<size_t>(1, ParallelCollisionEvaluator::resolveThreadCount(settings) / std::max<size_t>(1, attemptThreads));
             WorkerPool candidatePool(candidateThreads);
@@ -421,6 +434,9 @@ LayoutState MultiStartSolver::solve(
             }
             if (state.valid() && !searchStop.load() && !stopRequested.load()) {
                 state = gapFilling.fillGaps(document, settings, std::move(state), attemptPenalty, searchStop, &localStats);
+            }
+            if (state.valid() && !searchStop.load() && !stopRequested.load()) {
+                state = rearrangement.improve(document, settings, std::move(state), attemptPenalty, searchStop, &localStats);
             }
             state = localScorer.evaluate(document, settings, state.poses, &attemptPenalty, &globalSnapshot, 0.10);
             return AttemptResult{std::move(state), localStats, attempt, strategy, seed};
@@ -457,7 +473,7 @@ LayoutState MultiStartSolver::solve(
                 if (callback) {
                     const double progressBase = std::min(0.84, 0.18 + elapsedSeconds(started) / searchLimit * 0.66);
                     refreshTimingStats(aggregateStats, started);
-                    const SolverPhase phase = current.valid() ? SolverPhase::GapFilling :
+                    const SolverPhase phase = current.valid() ? SolverPhase::Rearrangement :
                         (current.collisionCount == 0 ? SolverPhase::Compression : SolverPhase::CollisionResolution);
                     callback({phase, progressBase, current, best, elapsedSeconds(started), aggregateStats});
                 }
@@ -489,6 +505,19 @@ LayoutState MultiStartSolver::solve(
             LayoutState gapFilled = gapFilling.fillGaps(document, settings, best, globalPenalty, stopRequested, &aggregateStats);
             if (gapFilled.valid() && gapFilled.totalScore + 1e-9 < best.totalScore) {
                 best = std::move(gapFilled);
+                ++aggregateStats.bestUpdates;
+            }
+            current = best;
+        }
+        if (best.valid()) {
+            if (callback) {
+                refreshTimingStats(aggregateStats, started);
+                callback({SolverPhase::Rearrangement, 0.87, best, best, elapsedSeconds(started), aggregateStats});
+            }
+            Rearrangement rearrangement;
+            LayoutState rearranged = rearrangement.improve(document, settings, best, globalPenalty, stopRequested, &aggregateStats);
+            if (rearranged.valid() && rearranged.totalScore + 1e-9 < best.totalScore) {
+                best = std::move(rearranged);
                 ++aggregateStats.bestUpdates;
             }
             current = best;
