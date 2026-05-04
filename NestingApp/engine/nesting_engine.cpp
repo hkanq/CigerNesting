@@ -79,7 +79,7 @@ SolverResult NestingEngine::getBestResult() const {
     return bestResult_;
 }
 
-void NestingEngine::publishSnapshot(SolverPhase phase, double progress, const std::vector<Pose>& current, const std::vector<Pose>& best, size_t collisions, double overlap, double utilization, bool running, double elapsedSeconds, size_t validationFailures, size_t invalidParts) {
+void NestingEngine::publishSnapshot(SolverPhase phase, double progress, const std::vector<Pose>& current, const std::vector<Pose>& best, size_t collisions, double overlap, double utilization, bool running, double elapsedSeconds, size_t validationFailures, size_t invalidParts, const SolverStats& stats) {
     auto snapshot = std::make_shared<SolverSnapshot>();
     snapshot->currentPoses = current;
     snapshot->bestPoses = best;
@@ -91,6 +91,7 @@ void NestingEngine::publishSnapshot(SolverPhase phase, double progress, const st
     snapshot->elapsedSeconds = elapsedSeconds;
     snapshot->validationFailureCount = validationFailures;
     snapshot->invalidPartCount = invalidParts;
+    snapshot->stats = stats;
     snapshot->running = running;
 
     std::lock_guard<std::mutex> lock(snapshotMutex_);
@@ -113,7 +114,8 @@ void NestingEngine::run() {
 
     LayoutState latestCurrent;
     LayoutState latestBest;
-    auto publishState = [&](SolverPhase phase, double progress, const LayoutState& current, const LayoutState& best, bool force, bool solverRunning) {
+    SolverStats latestStats;
+    auto publishState = [&](SolverPhase phase, double progress, const LayoutState& current, const LayoutState& best, bool force, bool solverRunning, const SolverStats& stats) {
         const auto now = Clock::now();
         if (!force && now - lastSnapshotTime < snapshotInterval) {
             return;
@@ -121,6 +123,7 @@ void NestingEngine::run() {
         lastSnapshotTime = now;
         latestCurrent = current;
         latestBest = best;
+        latestStats = stats;
         publishSnapshot(
             phase,
             progress,
@@ -132,7 +135,8 @@ void NestingEngine::run() {
             solverRunning,
             elapsedSecondsSince(started),
             static_cast<size_t>(std::max(0, current.collisionCount + current.invalidPartCount)) + static_cast<size_t>(current.spacingPenalty > 0.0 ? 1 : 0),
-            static_cast<size_t>(std::max(0, current.invalidPartCount)));
+            static_cast<size_t>(std::max(0, current.invalidPartCount)),
+            stats);
     };
 
     publishSnapshot(SolverPhase::PrepareGeometry, 0.02, {}, {}, 0, 0.0, 0.0, true, elapsedSecondsSince(started));
@@ -144,13 +148,14 @@ void NestingEngine::run() {
 
     MultiStartSolver solver;
     const LayoutState best = solver.solve(*doc, settings, stopRequested_, [&](const SolverProgress& progress) {
-        publishState(progress.phase, progress.progress, progress.current, progress.best, false, true);
+        publishState(progress.phase, progress.progress, progress.current, progress.best, false, true, progress.stats);
     });
+    latestStats = solver.lastStats();
 
     LayoutState finalCurrent = latestCurrent.poses.empty() ? best : latestCurrent;
     const LayoutState finalBest = best.poses.empty() ? latestBest : best;
     const SolverPhase finalPhase = stopRequested_.load() ? SolverPhase::Stopped : SolverPhase::FinalValidation;
-    publishState(finalPhase, stopRequested_.load() ? 1.0 : 0.97, finalCurrent, finalBest, true, !stopRequested_.load());
+    publishState(finalPhase, stopRequested_.load() ? 1.0 : 0.97, finalCurrent, finalBest, true, !stopRequested_.load(), latestStats);
 
     const double utilization = finalBest.utilization;
     {
@@ -161,6 +166,7 @@ void NestingEngine::run() {
         bestResult_.utilization = utilization;
         bestResult_.validationFailureCount = static_cast<size_t>(std::max(0, finalBest.collisionCount + finalBest.invalidPartCount)) + static_cast<size_t>(finalBest.spacingPenalty > 0.0 ? 1 : 0);
         bestResult_.invalidPartCount = static_cast<size_t>(std::max(0, finalBest.invalidPartCount));
+        bestResult_.stats = latestStats;
         bestResult_.valid = finalBest.valid();
     }
 
@@ -175,7 +181,8 @@ void NestingEngine::run() {
         false,
         elapsedSecondsSince(started),
         static_cast<size_t>(std::max(0, finalBest.collisionCount + finalBest.invalidPartCount)) + static_cast<size_t>(finalBest.spacingPenalty > 0.0 ? 1 : 0),
-        static_cast<size_t>(std::max(0, finalBest.invalidPartCount)));
+        static_cast<size_t>(std::max(0, finalBest.invalidPartCount)),
+        latestStats);
     running_.store(false);
 }
 

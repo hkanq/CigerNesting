@@ -44,6 +44,7 @@ TextId textIdForPhase(SolverPhase phase) {
     case SolverPhase::Exploration: return TextId::Exploration;
     case SolverPhase::CollisionResolution: return TextId::CollisionResolution;
     case SolverPhase::Compression: return TextId::Compression;
+    case SolverPhase::GapFilling: return TextId::GapFilling;
     case SolverPhase::UltraRefinement: return TextId::UltraRefinement;
     case SolverPhase::FinalValidation: return TextId::FinalValidation;
     case SolverPhase::Done: return TextId::Done;

@@ -211,10 +211,13 @@ EngineSettings RightPanel::getSettings() const {
     const LRESULT quality = SendMessageW(qualityCombo_, CB_GETCURSEL, 0, 0);
     if (quality == 0) {
         settings.qualityMode = QualityMode::Fast;
+        settings.performanceProfile = PerformanceProfile::Fast;
     } else if (quality == 2) {
         settings.qualityMode = QualityMode::MaxQuality;
+        settings.performanceProfile = PerformanceProfile::Maximum;
     } else {
         settings.qualityMode = QualityMode::Balanced;
+        settings.performanceProfile = PerformanceProfile::Balanced;
     }
     return settings;
 }

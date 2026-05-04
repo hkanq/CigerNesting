@@ -2,6 +2,7 @@
 
 #include "core/aabb.h"
 #include "engine/broadphase.h"
+#include "engine/layout_score_components.h"
 #include "geometry/clearance.h"
 #include "geometry/collision.h"
 #include <algorithm>
@@ -17,6 +18,7 @@ constexpr double kSpacingPenalty = 1000000.0;
 constexpr double kUsedAreaPenalty = 1.0;
 constexpr double kUtilizationReward = 10000.0;
 constexpr double kCompactnessReward = 0.02;
+constexpr double kCavityReward = 2500.0;
 
 double safeSheetArea(const Document& document) {
     return std::max(1.0, (document.sheet.width - document.sheet.margin * 2.0) * (document.sheet.height - document.sheet.margin * 2.0));
@@ -74,6 +76,7 @@ LayoutState LayoutScore::evaluate(
     const double usedArea = std::max(1.0, used.area());
     state.utilization = std::max(0.0, std::min(1.0, document.totalPartArea() / usedArea));
     const double compactness = document.totalPartArea() / usedArea;
+    const double cavityReward = cavityPlacementReward(document, poses);
 
     BroadPhase broad;
     const auto pairs = broad.findCandidatePairs(document.parts, poses, settings.partSpacing);
@@ -129,7 +132,8 @@ LayoutState LayoutScore::evaluate(
         state.spacingPenalty * kSpacingPenalty +
         usedArea * kUsedAreaPenalty -
         state.utilization * kUtilizationReward -
-        compactness * kCompactnessReward;
+        compactness * kCompactnessReward -
+        cavityReward * kCavityReward;
 
     return state;
 }

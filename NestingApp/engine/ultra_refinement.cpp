@@ -1,5 +1,6 @@
 #include "engine/ultra_refinement.h"
 
+#include "engine/layout_eval_cache.h"
 #include "core/math_utils.h"
 #include "engine/layout_score.h"
 #include <algorithm>
@@ -44,12 +45,12 @@ double requestedMinimumStepDegrees(const EngineSettings& settings) {
 
 double refinementBudgetSeconds(const EngineSettings& settings) {
     const double limit = std::max(0.25, settings.timeLimitSeconds);
-    switch (settings.qualityMode) {
-    case QualityMode::Fast:
+    switch (settings.performanceProfile) {
+    case PerformanceProfile::Fast:
         return std::min(0.35, std::max(0.05, limit * 0.06));
-    case QualityMode::MaxQuality:
+    case PerformanceProfile::Maximum:
         return std::min(4.0, std::max(0.20, limit * 0.22));
-    case QualityMode::Balanced:
+    case PerformanceProfile::Balanced:
     default:
         return std::min(1.5, std::max(0.10, limit * 0.15));
     }
@@ -83,13 +84,35 @@ std::vector<RotationStage> rotationStages(const EngineSettings& settings) {
     return stages;
 }
 
-size_t partLimitForQuality(QualityMode quality, size_t partCount) {
-    switch (quality) {
-    case QualityMode::Fast:
+size_t partLimitForProfile(PerformanceProfile profile, size_t partCount) {
+    if (partCount > 300) {
+        switch (profile) {
+        case PerformanceProfile::Fast:
+            return std::min<size_t>(partCount, 2);
+        case PerformanceProfile::Maximum:
+            return std::min<size_t>(partCount, 12);
+        case PerformanceProfile::Balanced:
+        default:
+            return std::min<size_t>(partCount, 6);
+        }
+    }
+    if (partCount > 100) {
+        switch (profile) {
+        case PerformanceProfile::Fast:
+            return std::min<size_t>(partCount, 3);
+        case PerformanceProfile::Maximum:
+            return std::min<size_t>(partCount, 18);
+        case PerformanceProfile::Balanced:
+        default:
+            return std::min<size_t>(partCount, 8);
+        }
+    }
+    switch (profile) {
+    case PerformanceProfile::Fast:
         return std::min<size_t>(partCount, 4);
-    case QualityMode::MaxQuality:
+    case PerformanceProfile::Maximum:
         return std::min<size_t>(partCount, 32);
-    case QualityMode::Balanced:
+    case PerformanceProfile::Balanced:
     default:
         return std::min<size_t>(partCount, 12);
     }
@@ -320,6 +343,17 @@ bool candidateImproves(const LayoutState& baseline, const LayoutState& trial, bo
     return trial.totalScore + mirrorThreshold < baseline.totalScore;
 }
 
+bool candidateImproves(const LayoutState& baseline, const DeltaEvaluation& trial, bool mirrorChanged) {
+    if (!trial.valid) {
+        return false;
+    }
+    if (!baseline.valid()) {
+        return true;
+    }
+    const double mirrorThreshold = mirrorChanged ? std::max(0.25, std::abs(baseline.totalScore) * 0.0005) : 1e-9;
+    return trial.totalScore + mirrorThreshold < baseline.totalScore;
+}
+
 CandidateResult evaluateCandidates(
     const Document& document,
     const EngineSettings& settings,
@@ -338,6 +372,8 @@ CandidateResult evaluateCandidates(
     const size_t chunkSize = (candidates.size() + workerCount - 1) / workerCount;
     std::vector<std::future<CandidateResult>> futures;
     futures.reserve(workerCount);
+    LayoutEvalCache evalCache;
+    evalCache.rebuild(document, settings, baseline, &penalties);
 
     for (size_t worker = 0; worker < workerCount; ++worker) {
         const size_t begin = worker * chunkSize;
@@ -346,18 +382,23 @@ CandidateResult evaluateCandidates(
             continue;
         }
         futures.push_back(workerPool.enqueue([&, begin, end]() {
-            LayoutScore scorer;
             CandidateResult best;
             for (size_t i = begin; i < end && !stopRequested.load(); ++i) {
-                std::vector<Pose> poses = baseline.poses;
-                poses[partIndex] = candidates[i].pose;
-                LayoutState trial = scorer.evaluate(document, settings, poses, &penalties);
+                const DeltaMove move{partIndex, baseline.poses[partIndex], candidates[i].pose};
+                const DeltaEvaluation trial = evaluateMoveDelta(document, settings, baseline, evalCache, move);
                 ++best.evaluated;
                 if (candidateImproves(baseline, trial, candidates[i].mirrorChanged) &&
                     (!best.found || trial.totalScore < best.state.totalScore)) {
+                    std::vector<Pose> poses = baseline.poses;
+                    poses[partIndex] = candidates[i].pose;
+                    LayoutScore scorer;
+                    LayoutState verified = scorer.evaluate(document, settings, poses, &penalties);
+                    if (!candidateImproves(baseline, verified, candidates[i].mirrorChanged)) {
+                        continue;
+                    }
                     best.found = true;
                     best.angleStepDegrees = candidates[i].angleStepDegrees;
-                    best.state = std::move(trial);
+                    best.state = std::move(verified);
                 }
             }
             return best;
@@ -415,7 +456,7 @@ LayoutState UltraRefinement::refine(
 
     const auto started = Clock::now();
     const double budget = refinementBudgetSeconds(settings);
-    const size_t partLimit = partLimitForQuality(settings.qualityMode, document.parts.size());
+    const size_t partLimit = partLimitForProfile(settings.performanceProfile, document.parts.size());
     std::vector<size_t> order = prioritizedParts(document, state, penalties);
     if (order.size() > partLimit) {
         order.resize(partLimit);

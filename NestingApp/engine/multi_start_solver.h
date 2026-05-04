@@ -17,6 +17,7 @@ struct SolverProgress {
     LayoutState current;
     LayoutState best;
     double elapsedSeconds = 0.0;
+    SolverStats stats;
 };
 
 using SolverProgressCallback = std::function<void(const SolverProgress&)>;
@@ -30,10 +31,12 @@ public:
         SolverProgressCallback callback) const;
 
     LayoutState rowBaseline(const Document& document, const EngineSettings& settings, PlacementStrategy strategy, unsigned int seed, int orderMode) const;
+    SolverStats lastStats() const { return lastStats_; }
 
 private:
     std::vector<PlacementStrategy> strategySchedule(PlacementStrategy preferred) const;
     std::vector<size_t> partOrder(const Document& document, unsigned int seed, int orderMode) const;
+    mutable SolverStats lastStats_{};
 };
 
 } // namespace nest

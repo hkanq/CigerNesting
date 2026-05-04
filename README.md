@@ -137,19 +137,81 @@ The solver is no longer limited to a single demo row placement pass. `NestingEng
 
 - `LayoutState` stores current poses, compactness, collision count, invalid part count, penalties, and total score
 - `LayoutScore` evaluates contour collision, spacing, sheet validity, used area, and utilization
+- `EngineSettings::performanceProfile` controls runtime depth separately from geometric validity
 - `PenaltySystem` separates per-attempt pair weights from optional low-weight global bias
 - `PoseSampler` generates translation, sheet contact, neighbor-edge contact, hole/forbidden-zone contact, rotation, mirror, and random jump candidates
 - `GuidedLocalSearch` tries candidate moves for colliding parts and accepts score-improving moves
 - `OverlapResolver` runs guided collision resolution while allowing temporarily invalid/overlapping layouts during exploration
 - `Compression` searches for safe movement with large-to-small step refinement and only accepts score-improving valid moves
+- `FreeSpaceAnalyzer` extracts sheet, contour, hole, concavity, used-bounds, and forbidden-zone placement opportunities from the current layout
+- `GapFilling` moves small parts into high-value cavities after compression, using delta scoring first and full contour validation before accepting a move
 - `MultiStartSolver` runs attempts in parallel through the internal worker pool, cycling placement strategies, seeds, and part orderings within `timeLimitSeconds`, while preserving best-so-far
 - `UltraRefinement` refines the best layout locally with angle ladders, micro-translation correction, optional mirroring, and strict contour validation
+- `SolverStats` reports evaluated candidates, accepted moves, rejection reasons, attempts, worker count, cache hits, elapsed time, and candidates/second
+- `LayoutEvalCache` supports incremental delta scoring for single-part candidate moves, avoiding full layout rescoring for every rejected candidate
 
 Solver quality smoke test target:
 
 ```powershell
 build\NestingApp\Release\CigerNestingSolverQualitySmoke.exe <repo-root>
 ```
+
+Performance stress smoke target:
+
+```powershell
+build\NestingApp\Release\CigerNestingPerformanceStressSmoke.exe
+```
+
+Delta scoring smoke target:
+
+```powershell
+build\NestingApp\Release\CigerNestingDeltaScoreSmoke.exe
+```
+
+Gap filling smoke target:
+
+```powershell
+build\NestingApp\Release\CigerNestingGapFillingSmoke.exe
+```
+
+The stress smoke generates 100, 250, and 500-part synthetic documents and reports Fast/Balanced/Maximum profile throughput. It is intentionally bounded so it can run as a smoke test; full long-running benchmark sweeps should use the main solver with larger `timeLimitSeconds`.
+
+## Delta Scoring
+
+`LayoutEvalCache` stores the current layout's transformed parts, part bounds, broadphase pair contributions, sheet validity, used bounds, and a lightweight grid index. When one candidate moves one part, `evaluateMoveDelta` recalculates only:
+
+- the moved part
+- previous pair contributions involving the moved part
+- new expanded-AABB neighbors from the spatial grid
+- the moved part's sheet validity and margin
+- used bounds, with full used-bounds recompute only when the moved part touched the previous used-layout boundary
+
+Guided local search, score compression, ultra refinement, and performance stress candidate checks use delta scoring first. Accepted candidates are still verified with full `LayoutScore` before becoming the new state, so validity rules are not relaxed.
+
+## Gap Filling
+
+The solver now has a cavity-aware pass between compression and ultra refinement:
+
+- sheet corners and boundaries seed conservative anchors
+- part outer contour bounds generate contact-oriented anchors
+- part hole rings generate center, inset-corner, and edge-midpoint anchors
+- concave vertices generate local indentation anchors without requiring a full convex hull/NFP implementation
+- used layout bounds contribute internal gap anchors
+- forbidden zones contribute avoidance/contact anchors around their safe perimeter
+
+The pass targets smaller parts first, roughly the lower 30% by footprint, so holes in donut/B-like parts and concave notches are tried before spending budget on large pieces. Each candidate is evaluated with `LayoutEvalCache::evaluateMoveDelta`; accepted candidates are then rechecked with full `LayoutScore`, real contour collision, clearance, sheet containment, and sheet margin rules.
+
+`LayoutScore` also includes a small cavity-placement reward when a part is validly inside another part's hole. This does not relax collision or clearance. It only helps the search prefer equally valid compact layouts that actively use internal voids.
+
+## Performance Profiles
+
+`PerformanceProfile` is independent from validity. Every profile still requires zero collision, zero spacing violation, and valid sheet containment.
+
+- `Fast`: fewer attempts, shallower local search, smaller neighbor contact set, half of automatic logical CPU count.
+- `Balanced`: more attempts, more candidate evaluation, automatic CPU count leaves one logical core free.
+- `Maximum`: full automatic logical CPU count, deepest attempt/refinement budgets, largest contact candidate set.
+
+When `cpuThreadCount` is `0`, the solver resolves thread count from the profile. Setting `cpuThreadCount` manually still overrides the profile thread count.
 
 Ultra refinement smoke test target:
 
@@ -181,3 +243,6 @@ Each accepted refinement must improve score and remain valid: no part collision,
 - Ultra refinement is active, but it is intentionally local and prioritized; it is not a full continuous nonlinear optimizer.
 - Direct2D, GPU evaluation, AI import, and Corel macro installation are intentionally not implemented yet.
 - The solver is now collision-driven v1 with parallel multi-start, but contact candidates are still geometric heuristics rather than a full NFP engine.
+- Gap filling is hole-aware and concavity-aware, but concavity detection is currently based on local reflex vertices rather than a full medial-axis/free-space decomposition.
+- Performance stress smoke is bounded and deterministic; it is not a substitute for long industrial benchmark runs.
+- Delta scoring currently optimizes single-part moves; multi-part coupled moves still need full verification/future delta extensions.

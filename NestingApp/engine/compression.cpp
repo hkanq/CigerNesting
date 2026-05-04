@@ -1,5 +1,6 @@
 #include "engine/compression.h"
 
+#include "engine/layout_eval_cache.h"
 #include "engine/layout_score.h"
 #include "geometry/clearance.h"
 #include "geometry/collision.h"
@@ -192,18 +193,31 @@ LayoutState Compression::compressByScore(const Document& document, const EngineS
         return pose;
     };
 
-    auto evaluateShift = [&](const LayoutState& base, size_t partIndex, int axis, int sign, double distance) {
+    auto evaluateShift = [&](const LayoutState& base, const LayoutEvalCache& cache, size_t partIndex, int axis, int sign, double distance) {
         std::vector<Pose> trialPoses = base.poses;
         trialPoses[partIndex] = shiftedPose(trialPoses[partIndex], axis, sign, distance);
-        return scorer.evaluate(document, settings, trialPoses, &penalties);
+        const DeltaMove move{partIndex, base.poses[partIndex], trialPoses[partIndex]};
+        const DeltaEvaluation delta = evaluateMoveDelta(document, settings, base, cache, move);
+        LayoutState trial = base;
+        trial.poses = std::move(trialPoses);
+        trial.collisionCount = delta.collisionCount;
+        trial.invalidPartCount = delta.invalidPartCount;
+        trial.spacingPenalty = delta.spacingPenalty;
+        trial.sheetPenalty = delta.sheetPenalty;
+        trial.usedWidth = delta.usedWidth;
+        trial.usedHeight = delta.usedHeight;
+        trial.totalScore = delta.totalScore;
+        const double usedArea = std::max(1.0, delta.usedWidth * delta.usedHeight);
+        trial.utilization = std::max(0.0, std::min(1.0, document.totalPartArea() / usedArea));
+        return trial;
     };
 
-    auto pathIsSafe = [&](const LayoutState& base, size_t partIndex, int axis, int sign, double distance) {
+    auto pathIsSafe = [&](const LayoutState& base, const LayoutEvalCache& cache, size_t partIndex, int axis, int sign, double distance) {
         const double sampleStep = std::max(1.0, settings.partSpacing * 0.5);
         const int samples = std::max(1, static_cast<int>(std::ceil(distance / sampleStep)));
         for (int sample = 1; sample <= samples; ++sample) {
             const double d = distance * static_cast<double>(sample) / static_cast<double>(samples);
-            const LayoutState trial = evaluateShift(base, partIndex, axis, sign, d);
+            const LayoutState trial = evaluateShift(base, cache, partIndex, axis, sign, d);
             if (!trial.valid()) {
                 return false;
             }
@@ -215,12 +229,21 @@ LayoutState Compression::compressByScore(const Document& document, const EngineS
         double accepted = 0.0;
         double step = initialStep;
         LayoutState best = base;
+        LayoutEvalCache cache;
+        cache.rebuild(document, settings, base, &penalties);
         while (step >= minStep) {
             const double candidateDistance = accepted + step;
-            LayoutState trial = evaluateShift(base, partIndex, axis, sign, candidateDistance);
-            if (trial.valid() && trial.totalScore + 1e-9 < best.totalScore && pathIsSafe(base, partIndex, axis, sign, candidateDistance)) {
-                accepted = candidateDistance;
-                best = std::move(trial);
+            LayoutState trial = evaluateShift(base, cache, partIndex, axis, sign, candidateDistance);
+            if (trial.valid() && trial.totalScore + 1e-9 < best.totalScore && pathIsSafe(base, cache, partIndex, axis, sign, candidateDistance)) {
+                std::vector<Pose> verifiedPoses = base.poses;
+                verifiedPoses[partIndex] = shiftedPose(verifiedPoses[partIndex], axis, sign, candidateDistance);
+                LayoutState verified = scorer.evaluate(document, settings, verifiedPoses, &penalties);
+                if (verified.valid() && verified.totalScore + 1e-9 < best.totalScore) {
+                    accepted = candidateDistance;
+                    best = std::move(verified);
+                } else {
+                    step *= 0.5;
+                }
             } else {
                 step *= 0.5;
             }

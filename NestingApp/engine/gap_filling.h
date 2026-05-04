@@ -5,22 +5,33 @@
 #include "engine/layout_state.h"
 #include "engine/penalty_system.h"
 #include "engine/solver_state.h"
-#include "engine/worker_pool.h"
 #include <atomic>
+#include <cstddef>
 
 namespace nest {
 
-class OverlapResolver {
+struct GapFillingStats {
+    size_t generatedAnchors = 0;
+    size_t evaluatedCandidates = 0;
+    size_t acceptedMoves = 0;
+    size_t holeCandidates = 0;
+    size_t concavityCandidates = 0;
+};
+
+class GapFilling {
 public:
-    LayoutState resolve(
+    LayoutState fillGaps(
         const Document& document,
         const EngineSettings& settings,
         LayoutState state,
-        PenaltySystem& attemptPenalties,
-        WorkerPool& workerPool,
+        const PenaltySystem& penalties,
         const std::atomic_bool& stopRequested,
-        unsigned int seed,
         SolverStats* stats = nullptr) const;
+
+    GapFillingStats lastStats() const { return lastStats_; }
+
+private:
+    mutable GapFillingStats lastStats_{};
 };
 
 } // namespace nest

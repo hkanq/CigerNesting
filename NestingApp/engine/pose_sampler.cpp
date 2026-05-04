@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <random>
+#include <utility>
 
 namespace nest {
 namespace {
@@ -123,12 +124,32 @@ std::vector<Pose> PoseSampler::moveCandidates(const Document& document, const En
         }
     };
 
+    size_t neighborLimit = 32;
+    if (settings.performanceProfile == PerformanceProfile::Fast) {
+        neighborLimit = 12;
+    } else if (settings.performanceProfile == PerformanceProfile::Maximum) {
+        neighborLimit = 96;
+    }
+    if (document.parts.size() > 300) {
+        neighborLimit = std::max<size_t>(8, neighborLimit / 2);
+    } else if (document.parts.size() > 100) {
+        neighborLimit = std::max<size_t>(10, neighborLimit * 2 / 3);
+    }
+
+    std::vector<std::pair<double, AABB>> neighbors;
+    neighbors.reserve(std::min(document.parts.size(), poses.size()));
     for (size_t i = 0; i < document.parts.size() && i < poses.size(); ++i) {
-        if (i == partIndex) {
-            continue;
+        if (i != partIndex) {
+            const AABB other = transformedBounds(document.parts[i], poses[i]);
+            neighbors.push_back({distance(currentBounds.center(), other.center()), other});
         }
-        const AABB other = transformedBounds(document.parts[i], poses[i]);
-        addBoundsContactCandidates(other, settings.partSpacing);
+    }
+    std::sort(neighbors.begin(), neighbors.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+    if (neighbors.size() > neighborLimit) {
+        neighbors.resize(neighborLimit);
+    }
+    for (const auto& neighbor : neighbors) {
+        addBoundsContactCandidates(neighbor.second, settings.partSpacing);
     }
 
     addBoundsContactCandidates(AABB::fromMinMax(

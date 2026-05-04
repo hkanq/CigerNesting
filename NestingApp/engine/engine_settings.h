@@ -16,6 +16,12 @@ enum class QualityMode {
     MaxQuality
 };
 
+enum class PerformanceProfile {
+    Fast,
+    Balanced,
+    Maximum
+};
+
 enum class PlacementStrategy {
     BottomLeft,
     TopLeft,
@@ -41,6 +47,7 @@ struct EngineSettings {
     double rotationStepDegrees = 1.0;
     bool allowMirroring = false;
     QualityMode qualityMode = QualityMode::Balanced;
+    PerformanceProfile performanceProfile = PerformanceProfile::Balanced;
     double timeLimitSeconds = 30.0;
     int cpuThreadCount = 0;
     bool useGpuFutureFlag = false;

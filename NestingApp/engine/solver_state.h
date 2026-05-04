@@ -13,10 +13,27 @@ enum class SolverPhase {
     Exploration,
     CollisionResolution,
     Compression,
+    GapFilling,
     UltraRefinement,
     FinalValidation,
     Done,
     Stopped
+};
+
+struct SolverStats {
+    size_t evaluatedCandidates = 0;
+    size_t acceptedMoves = 0;
+    size_t rejectedCollision = 0;
+    size_t rejectedSpacing = 0;
+    size_t rejectedSheet = 0;
+    size_t attemptsStarted = 0;
+    size_t attemptsCompleted = 0;
+    size_t bestUpdates = 0;
+    double elapsedMs = 0.0;
+    size_t workerCount = 0;
+    double candidatesPerSecond = 0.0;
+    size_t cacheHits = 0;
+    size_t cacheMisses = 0;
 };
 
 struct SolverSnapshot {
@@ -30,6 +47,7 @@ struct SolverSnapshot {
     double elapsedSeconds = 0.0;
     size_t validationFailureCount = 0;
     size_t invalidPartCount = 0;
+    SolverStats stats;
     bool running = false;
 };
 
@@ -40,6 +58,7 @@ struct SolverResult {
     double utilization = 0.0;
     size_t validationFailureCount = 0;
     size_t invalidPartCount = 0;
+    SolverStats stats;
     bool valid = false;
 };
 

@@ -45,8 +45,12 @@ size_t ParallelCollisionEvaluator::resolveThreadCount(const EngineSettings& sett
         return std::max<size_t>(1, static_cast<size_t>(settings.cpuThreadCount));
     }
 
-    if (settings.qualityMode == QualityMode::MaxQuality) {
+    if (settings.performanceProfile == PerformanceProfile::Maximum) {
         return hardware;
+    }
+
+    if (settings.performanceProfile == PerformanceProfile::Fast) {
+        return std::max<size_t>(1, hardware / 2);
     }
 
     return hardware > 1 ? hardware - 1 : 1;
