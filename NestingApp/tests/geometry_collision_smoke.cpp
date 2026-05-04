@@ -115,7 +115,7 @@ int main() {
 
     Pose touching;
     touching.x = 10.0;
-    ok &= expect(partsCollide(square, origin, square, touching, eps), "touching squares collide at tolerance");
+    ok &= expect(!partsCollide(square, origin, square, touching, eps), "touching squares are allowed when spacing is zero");
 
     Pose separated;
     separated.x = 25.0;

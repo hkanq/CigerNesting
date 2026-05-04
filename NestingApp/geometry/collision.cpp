@@ -122,6 +122,21 @@ bool anyRingSegmentsIntersect(const std::vector<Vec2>& a, const std::vector<Vec2
     return intersects;
 }
 
+bool anyRingSegmentsProperlyIntersect(const std::vector<Vec2>& a, const std::vector<Vec2>& b, double eps) {
+    bool intersects = false;
+    forEachSegment(a, eps, [&](Vec2 a0, Vec2 a1) {
+        if (intersects) {
+            return;
+        }
+        forEachSegment(b, eps, [&](Vec2 b0, Vec2 b1) {
+            if (!intersects && segmentsProperlyIntersect(a0, a1, b0, b1, eps)) {
+                intersects = true;
+            }
+        });
+    });
+    return intersects;
+}
+
 bool ringContainsOrTouchesPoint(const std::vector<Vec2>& ring, Vec2 point, double eps) {
     const PointLocation location = pointInRing(ring, point, eps);
     return location == PointLocation::Inside || location == PointLocation::OnBoundary;
@@ -245,20 +260,54 @@ bool zonesOverlapSolidPart(const TransformedPart& part, const std::vector<Ring>&
     return false;
 }
 
+bool pointStrictlyInSolidArea(const TransformedPart& part, Vec2 p, double eps) {
+    bool inOuterInterior = false;
+    for (const TransformedRing& ring : part.rings) {
+        if (ring.isHole) {
+            continue;
+        }
+        if (pointInRing(ring.points, p, eps) == PointLocation::Inside) {
+            inOuterInterior = true;
+            break;
+        }
+    }
+    if (!inOuterInterior) {
+        return false;
+    }
+    for (const TransformedRing& ring : part.rings) {
+        if (!ring.isHole) {
+            continue;
+        }
+        if (pointInRing(ring.points, p, eps) != PointLocation::Outside) {
+            return false;
+        }
+    }
+    return true;
+}
+
 bool anySolidSampleInsideOther(const TransformedPart& source, const TransformedPart& other, double eps) {
     for (const TransformedRing& ring : source.rings) {
         if (ring.isHole || ring.points.empty()) {
             continue;
         }
         const size_t count = effectivePointCount(ring.points, eps);
+        Vec2 centroid{};
         for (size_t i = 0; i < count; ++i) {
             const Vec2 a = ring.points[i];
             const Vec2 b = ring.points[(i + 1) % count];
-            if (pointInSolidArea(other, a, eps)) {
+            centroid += a;
+            if (pointStrictlyInSolidArea(other, a, eps)) {
                 return true;
             }
             const Vec2 mid = (a + b) * 0.5;
-            if (pointInSolidArea(other, mid, eps)) {
+            if (pointStrictlyInSolidArea(other, mid, eps)) {
+                return true;
+            }
+        }
+        if (count > 0) {
+            centroid = centroid / static_cast<double>(count);
+            if (pointStrictlyInSolidArea(source, centroid, eps) &&
+                pointStrictlyInSolidArea(other, centroid, eps)) {
                 return true;
             }
         }
@@ -465,7 +514,7 @@ bool partsCollide(const Part& a, const Pose& poseA, const Part& b, const Pose& p
                 continue;
             }
             if (ringA.bounds.expanded(eps).overlaps(ringB.bounds.expanded(eps)) &&
-                anyRingSegmentsIntersect(ringA.points, ringB.points, eps)) {
+                anyRingSegmentsProperlyIntersect(ringA.points, ringB.points, eps)) {
                 return true;
             }
         }

@@ -18,7 +18,8 @@ constexpr double kSpacingPenalty = 1000000.0;
 constexpr double kUsedAreaPenalty = 1.0;
 constexpr double kUtilizationReward = 10000.0;
 constexpr double kCompactnessReward = 0.02;
-constexpr double kCavityReward = 2500.0;
+constexpr double kCavityReward = 75000.0;
+constexpr double kContactReward = 450.0;
 
 double safeSheetArea(const Document& document) {
     return std::max(1.0, (document.sheet.width - document.sheet.margin * 2.0) * (document.sheet.height - document.sheet.margin * 2.0));
@@ -103,6 +104,11 @@ LayoutState LayoutScore::evaluate(
                 settings.collisionTolerance);
             if (!clearanceResult.valid) {
                 state.spacingPenalty += pairWeight * std::max(0.01, clearanceDeficit(clearance.partSpacing, clearanceResult.minDistance));
+            } else {
+                const double contactWindow = std::max(0.05, settings.collisionTolerance * 10.0);
+                if (std::abs(clearanceResult.minDistance - clearance.partSpacing) <= contactWindow) {
+                    state.contactReward += pairWeight;
+                }
             }
         }
     }
@@ -133,7 +139,8 @@ LayoutState LayoutScore::evaluate(
         usedArea * kUsedAreaPenalty -
         state.utilization * kUtilizationReward -
         compactness * kCompactnessReward -
-        cavityReward * kCavityReward;
+        cavityReward * kCavityReward -
+        state.contactReward * kContactReward;
 
     return state;
 }

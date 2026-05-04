@@ -54,6 +54,7 @@ struct PairScoreContribution {
     bool clearanceValid = true;
     double clearanceDistance = 0.0;
     bool exactClearanceEvaluated = false;
+    double contactReward = 0.0;
 };
 
 struct SheetScoreContribution {
@@ -100,6 +101,7 @@ public:
     double pairOverlapPenalty() const { return pairOverlapPenalty_; }
     double spacingPenalty() const { return spacingPenalty_; }
     double sheetPenalty() const { return sheetPenalty_; }
+    double contactReward() const { return contactReward_; }
     int collisionCount() const { return collisionCount_; }
     int invalidPartCount() const { return invalidPartCount_; }
     const PenaltySystem* attemptPenalties() const { return attemptPenalties_; }
@@ -157,6 +159,7 @@ private:
     double pairOverlapPenalty_ = 0.0;
     double spacingPenalty_ = 0.0;
     double sheetPenalty_ = 0.0;
+    double contactReward_ = 0.0;
     int collisionCount_ = 0;
     int invalidPartCount_ = 0;
     double cellSize_ = 64.0;

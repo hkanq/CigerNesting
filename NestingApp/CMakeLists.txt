@@ -49,6 +49,8 @@ add_executable(CigerNestingSolverQualitySmoke
     engine/acceptance.cpp
     engine/broadphase.cpp
     engine/compression.cpp
+    engine/contact_packing.cpp
+    engine/convergence.cpp
     engine/escape_search.cpp
     engine/frontier_analyzer.cpp
     engine/free_space_analyzer.cpp
@@ -59,6 +61,7 @@ add_executable(CigerNestingSolverQualitySmoke
     engine/layout_score_components.cpp
     engine/layout_state.cpp
     engine/multi_start_solver.cpp
+    engine/nesting_engine.cpp
     engine/overlap_resolver.cpp
     engine/parallel_collision_evaluator.cpp
     engine/penalty_system.cpp
@@ -103,6 +106,8 @@ add_executable(CigerNestingPerformanceStressSmoke
     engine/acceptance.cpp
     engine/broadphase.cpp
     engine/compression.cpp
+    engine/contact_packing.cpp
+    engine/convergence.cpp
     engine/escape_search.cpp
     engine/frontier_analyzer.cpp
     engine/free_space_analyzer.cpp
@@ -113,6 +118,7 @@ add_executable(CigerNestingPerformanceStressSmoke
     engine/layout_score_components.cpp
     engine/layout_state.cpp
     engine/multi_start_solver.cpp
+    engine/nesting_engine.cpp
     engine/overlap_resolver.cpp
     engine/parallel_collision_evaluator.cpp
     engine/penalty_system.cpp
@@ -226,6 +232,8 @@ add_executable(CigerNestingBenchmarkRunner
     engine/acceptance.cpp
     engine/broadphase.cpp
     engine/compression.cpp
+    engine/contact_packing.cpp
+    engine/convergence.cpp
     engine/escape_search.cpp
     engine/frontier_analyzer.cpp
     engine/free_space_analyzer.cpp
@@ -266,6 +274,117 @@ add_executable(CigerNestingLargeScaleQualitySmoke
     engine/acceptance.cpp
     engine/broadphase.cpp
     engine/compression.cpp
+    engine/contact_packing.cpp
+    engine/convergence.cpp
+    engine/escape_search.cpp
+    engine/frontier_analyzer.cpp
+    engine/free_space_analyzer.cpp
+    engine/gap_filling.cpp
+    engine/guided_local_search.cpp
+    engine/layout_eval_cache.cpp
+    engine/layout_score.cpp
+    engine/layout_score_components.cpp
+    engine/layout_state.cpp
+    engine/multi_start_solver.cpp
+    engine/overlap_resolver.cpp
+    engine/parallel_collision_evaluator.cpp
+    engine/penalty_system.cpp
+    engine/pose_sampler.cpp
+    engine/rearrangement.cpp
+    engine/region_repack.cpp
+    engine/small_part_filler.cpp
+    engine/tabu_memory.cpp
+    engine/ultra_refinement.cpp
+    engine/worker_pool.cpp
+)
+
+add_executable(CigerNestingSolver500MaxSpacing0Smoke
+    tests/solver_500_max_spacing0_smoke.cpp
+    import/importer.cpp
+    import/svg_parser.cpp
+    import/plt_parser.cpp
+    import/dxf_parser.cpp
+    geometry/arc.cpp
+    geometry/bezier.cpp
+    geometry/clearance.cpp
+    geometry/flatten.cpp
+    geometry/winding.cpp
+    geometry/polygon_utils.cpp
+    geometry/collision.cpp
+    geometry/transformed_shape.cpp
+    geometry/spatial_grid.cpp
+    engine/acceptance.cpp
+    engine/broadphase.cpp
+    engine/compression.cpp
+    engine/contact_packing.cpp
+    engine/convergence.cpp
+    engine/escape_search.cpp
+    engine/frontier_analyzer.cpp
+    engine/free_space_analyzer.cpp
+    engine/gap_filling.cpp
+    engine/guided_local_search.cpp
+    engine/layout_eval_cache.cpp
+    engine/layout_score.cpp
+    engine/layout_score_components.cpp
+    engine/layout_state.cpp
+    engine/multi_start_solver.cpp
+    engine/overlap_resolver.cpp
+    engine/parallel_collision_evaluator.cpp
+    engine/penalty_system.cpp
+    engine/pose_sampler.cpp
+    engine/rearrangement.cpp
+    engine/region_repack.cpp
+    engine/small_part_filler.cpp
+    engine/tabu_memory.cpp
+    engine/ultra_refinement.cpp
+    engine/worker_pool.cpp
+)
+
+add_executable(CigerNestingConvergenceSmoke
+    tests/convergence_smoke.cpp
+    geometry/clearance.cpp
+    geometry/collision.cpp
+    geometry/spatial_grid.cpp
+    geometry/transformed_shape.cpp
+    engine/acceptance.cpp
+    engine/broadphase.cpp
+    engine/compression.cpp
+    engine/contact_packing.cpp
+    engine/convergence.cpp
+    engine/escape_search.cpp
+    engine/frontier_analyzer.cpp
+    engine/free_space_analyzer.cpp
+    engine/gap_filling.cpp
+    engine/guided_local_search.cpp
+    engine/layout_eval_cache.cpp
+    engine/layout_score.cpp
+    engine/layout_score_components.cpp
+    engine/layout_state.cpp
+    engine/multi_start_solver.cpp
+    engine/nesting_engine.cpp
+    engine/overlap_resolver.cpp
+    engine/parallel_collision_evaluator.cpp
+    engine/penalty_system.cpp
+    engine/pose_sampler.cpp
+    engine/rearrangement.cpp
+    engine/region_repack.cpp
+    engine/small_part_filler.cpp
+    engine/tabu_memory.cpp
+    engine/ultra_refinement.cpp
+    engine/worker_pool.cpp
+)
+
+add_executable(CigerNestingContourInterlockSmoke
+    tests/contour_interlock_smoke.cpp
+    geometry/clearance.cpp
+    geometry/collision.cpp
+    geometry/spatial_grid.cpp
+    geometry/transformed_shape.cpp
+    engine/acceptance.cpp
+    engine/broadphase.cpp
+    engine/compression.cpp
+    engine/contact_packing.cpp
+    engine/convergence.cpp
     engine/escape_search.cpp
     engine/frontier_analyzer.cpp
     engine/free_space_analyzer.cpp
@@ -312,6 +431,12 @@ target_include_directories(CigerNestingBenchmarkRunner PRIVATE "${CMAKE_CURRENT_
 target_compile_definitions(CigerNestingBenchmarkRunner PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
 target_include_directories(CigerNestingLargeScaleQualitySmoke PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_definitions(CigerNestingLargeScaleQualitySmoke PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
+target_include_directories(CigerNestingSolver500MaxSpacing0Smoke PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_definitions(CigerNestingSolver500MaxSpacing0Smoke PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
+target_include_directories(CigerNestingConvergenceSmoke PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_definitions(CigerNestingConvergenceSmoke PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
+target_include_directories(CigerNestingContourInterlockSmoke PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_definitions(CigerNestingContourInterlockSmoke PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
 
 if(MSVC)
     target_compile_options(CigerNesting PRIVATE /W4 /permissive- /EHsc /utf-8)
@@ -327,6 +452,9 @@ if(MSVC)
     target_compile_options(CigerNestingEscapeSmoke PRIVATE /W4 /permissive- /EHsc /utf-8)
     target_compile_options(CigerNestingBenchmarkRunner PRIVATE /W4 /permissive- /EHsc /utf-8)
     target_compile_options(CigerNestingLargeScaleQualitySmoke PRIVATE /W4 /permissive- /EHsc /utf-8)
+    target_compile_options(CigerNestingSolver500MaxSpacing0Smoke PRIVATE /W4 /permissive- /EHsc /utf-8)
+    target_compile_options(CigerNestingConvergenceSmoke PRIVATE /W4 /permissive- /EHsc /utf-8)
+    target_compile_options(CigerNestingContourInterlockSmoke PRIVATE /W4 /permissive- /EHsc /utf-8)
 else()
     target_compile_options(CigerNesting PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_options(CigerNestingGeometryCollisionSmoke PRIVATE -Wall -Wextra -Wpedantic)
@@ -341,4 +469,7 @@ else()
     target_compile_options(CigerNestingEscapeSmoke PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_options(CigerNestingBenchmarkRunner PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_options(CigerNestingLargeScaleQualitySmoke PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(CigerNestingSolver500MaxSpacing0Smoke PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(CigerNestingConvergenceSmoke PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(CigerNestingContourInterlockSmoke PRIVATE -Wall -Wextra -Wpedantic)
 endif()

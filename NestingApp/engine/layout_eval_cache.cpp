@@ -20,7 +20,8 @@ constexpr double kSpacingPenalty = 1000000.0;
 constexpr double kUsedAreaPenalty = 1.0;
 constexpr double kUtilizationReward = 10000.0;
 constexpr double kCompactnessReward = 0.02;
-constexpr double kCavityReward = 2500.0;
+constexpr double kCavityReward = 75000.0;
+constexpr double kContactReward = 450.0;
 
 double clearanceDeficit(double required, double actual) {
     if (!std::isfinite(actual)) {
@@ -188,6 +189,11 @@ PairScoreContribution evaluatePair(
     contribution.exactClearanceEvaluated = true;
     if (!clearance.valid) {
         contribution.spacingPenalty = weight * std::max(0.01, clearanceDeficit(required, clearance.minDistance));
+    } else {
+        const double contactWindow = std::max(0.05, settings.collisionTolerance * 10.0);
+        if (std::abs(clearance.minDistance - required) <= contactWindow) {
+            contribution.contactReward = weight;
+        }
     }
     return contribution;
 }
@@ -253,6 +259,7 @@ double totalScore(
     double spacingPenalty,
     const AABB& usedBounds,
     double cavityReward,
+    double contactReward,
     double& usedWidth,
     double& usedHeight) {
     usedWidth = usedBounds.width();
@@ -269,7 +276,8 @@ double totalScore(
         usedArea * kUsedAreaPenalty -
         utilization * kUtilizationReward -
         compactness * kCompactnessReward -
-        cavityReward * kCavityReward;
+        cavityReward * kCavityReward -
+        contactReward * kContactReward;
 }
 
 } // namespace
@@ -336,6 +344,7 @@ void LayoutEvalCache::erasePairContribution(size_t a, size_t b) {
     collisionCount_ -= it->second.collisionCount;
     pairOverlapPenalty_ -= it->second.overlapPenalty;
     spacingPenalty_ -= it->second.spacingPenalty;
+    contactReward_ -= it->second.contactReward;
     pairContributions_.erase(it);
     if (a < pairsByPart_.size()) {
         std::vector<size_t>& pairs = pairsByPart_[a];
@@ -362,6 +371,7 @@ void LayoutEvalCache::storePairContribution(size_t a, size_t b, const PairScoreC
     collisionCount_ += contribution.collisionCount;
     pairOverlapPenalty_ += contribution.overlapPenalty;
     spacingPenalty_ += contribution.spacingPenalty;
+    contactReward_ += contribution.contactReward;
 }
 
 void LayoutEvalCache::rebuild(
@@ -393,6 +403,7 @@ void LayoutEvalCache::rebuild(
     collisionCount_ = 0;
     pairOverlapPenalty_ = 0.0;
     spacingPenalty_ = 0.0;
+    contactReward_ = 0.0;
     pairContributions_.clear();
     pairsByPart_.assign(count, {});
 
@@ -527,6 +538,7 @@ void LayoutEvalCache::updateAfterAcceptedMultiMove(
     collisionCount_ = std::max(0, collisionCount_);
     pairOverlapPenalty_ = std::max(0.0, pairOverlapPenalty_);
     spacingPenalty_ = std::max(0.0, spacingPenalty_);
+    contactReward_ = std::max(0.0, contactReward_);
     invalidPartCount_ = std::max(0, invalidPartCount_);
     sheetPenalty_ = std::max(0.0, sheetPenalty_);
 }
@@ -581,6 +593,7 @@ DeltaEvaluation evaluateMoveDelta(
     int collisionCount = cache.collisionCount();
     double overlapPenalty = cache.pairOverlapPenalty();
     double spacingPenalty = cache.spacingPenalty();
+    double contactReward = cache.contactReward();
     int invalidPartCount = cache.invalidPartCount();
     double sheetPenalty = cache.sheetPenalty();
 
@@ -589,6 +602,7 @@ DeltaEvaluation evaluateMoveDelta(
         collisionCount -= old.collisionCount;
         overlapPenalty -= old.overlapPenalty;
         spacingPenalty -= old.spacingPenalty;
+        contactReward -= old.contactReward;
     }
 
     const SheetScoreContribution oldSheet = cache.sheetContributions()[move.partIndex];
@@ -607,6 +621,7 @@ DeltaEvaluation evaluateMoveDelta(
         collisionCount += contribution.collisionCount;
         overlapPenalty += contribution.overlapPenalty;
         spacingPenalty += contribution.spacingPenalty;
+        contactReward += contribution.contactReward;
     }
 
     const SheetScoreContribution newSheet = evaluateSheet(document, settings, move.partIndex, move.newPose);
@@ -630,7 +645,7 @@ DeltaEvaluation evaluateMoveDelta(
     std::vector<Pose> candidatePoses = current.poses;
     candidatePoses[move.partIndex] = move.newPose;
     const double cavityReward = cavityPlacementReward(document, candidatePoses);
-    evaluation.totalScore = totalScore(document, collisionCount, std::max(0.0, overlapPenalty), invalidPartCount, evaluation.sheetPenalty, evaluation.spacingPenalty, used, cavityReward, evaluation.usedWidth, evaluation.usedHeight);
+    evaluation.totalScore = totalScore(document, collisionCount, std::max(0.0, overlapPenalty), invalidPartCount, evaluation.sheetPenalty, evaluation.spacingPenalty, used, cavityReward, std::max(0.0, contactReward), evaluation.usedWidth, evaluation.usedHeight);
     evaluation.valid = collisionCount == 0 && invalidPartCount == 0 && evaluation.spacingPenalty <= 0.0 && evaluation.sheetPenalty <= 0.0;
     return evaluation;
 }
@@ -708,6 +723,7 @@ MultiDeltaEvaluation evaluateMultiMoveDelta(
     int collisionCount = cache.collisionCount();
     double overlapPenalty = cache.pairOverlapPenalty();
     double spacingPenalty = cache.spacingPenalty();
+    double contactReward = cache.contactReward();
     int invalidPartCount = cache.invalidPartCount();
     double sheetPenalty = cache.sheetPenalty();
 
@@ -716,6 +732,7 @@ MultiDeltaEvaluation evaluateMultiMoveDelta(
         collisionCount -= old.collisionCount;
         overlapPenalty -= old.overlapPenalty;
         spacingPenalty -= old.spacingPenalty;
+        contactReward -= old.contactReward;
     }
 
     for (size_t index : moved) {
@@ -743,6 +760,7 @@ MultiDeltaEvaluation evaluateMultiMoveDelta(
         collisionCount += contribution.collisionCount;
         overlapPenalty += contribution.overlapPenalty;
         spacingPenalty += contribution.spacingPenalty;
+        contactReward += contribution.contactReward;
     }
 
     for (size_t index : moved) {
@@ -796,6 +814,7 @@ MultiDeltaEvaluation evaluateMultiMoveDelta(
         evaluation.spacingPenalty,
         used,
         cavityReward,
+        std::max(0.0, contactReward),
         evaluation.usedWidth,
         evaluation.usedHeight);
     evaluation.valid = evaluation.collisionCount == 0 &&

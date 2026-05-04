@@ -1,6 +1,8 @@
 #include "engine/nesting_engine.h"
 
+#include "engine/layout_score.h"
 #include "engine/multi_start_solver.h"
+#include "engine/penalty_system.h"
 #include <algorithm>
 #include <chrono>
 #include <memory>
@@ -124,18 +126,21 @@ void NestingEngine::run() {
         latestCurrent = current;
         latestBest = best;
         latestStats = stats;
+        const LayoutState& display = best.valid() && !best.poses.empty() ? best : current;
         publishSnapshot(
             phase,
             progress,
-            current.poses,
+            display.poses,
             best.poses,
-            static_cast<size_t>(std::max(0, current.collisionCount)),
-            current.overlapPenalty,
-            current.utilization,
+            static_cast<size_t>(std::max(0, display.collisionCount)),
+            display.overlapPenalty,
+            display.utilization,
             solverRunning,
             elapsedSecondsSince(started),
-            static_cast<size_t>(std::max(0, current.collisionCount + current.invalidPartCount)) + static_cast<size_t>(current.spacingPenalty > 0.0 ? 1 : 0),
-            static_cast<size_t>(std::max(0, current.invalidPartCount)),
+            static_cast<size_t>(std::max(0, display.collisionCount + display.invalidPartCount)) +
+                static_cast<size_t>(display.spacingPenalty > 0.0 ? 1 : 0) +
+                static_cast<size_t>(display.sheetPenalty > 0.0 ? 1 : 0),
+            static_cast<size_t>(std::max(0, display.invalidPartCount)),
             stats);
     };
 
@@ -152,8 +157,13 @@ void NestingEngine::run() {
     });
     latestStats = solver.lastStats();
 
-    LayoutState finalCurrent = latestCurrent.poses.empty() ? best : latestCurrent;
-    const LayoutState finalBest = best.poses.empty() ? latestBest : best;
+    LayoutScore scorer;
+    PenaltySystem finalPenalties;
+    LayoutState finalBest = best.poses.empty() ? latestBest : scorer.evaluate(*doc, settings, best.poses, &finalPenalties);
+    if (!finalBest.poses.empty()) {
+        finalBest = scorer.evaluate(*doc, settings, finalBest.poses, &finalPenalties);
+    }
+    LayoutState finalCurrent = finalBest.valid() ? finalBest : (latestCurrent.poses.empty() ? finalBest : latestCurrent);
     const SolverPhase finalPhase = stopRequested_.load() ? SolverPhase::Stopped : SolverPhase::FinalValidation;
     publishState(finalPhase, stopRequested_.load() ? 1.0 : 0.97, finalCurrent, finalBest, true, !stopRequested_.load(), latestStats);
 
@@ -164,24 +174,34 @@ void NestingEngine::run() {
         bestResult_.collisionCount = static_cast<size_t>(std::max(0, finalBest.collisionCount));
         bestResult_.overlapScore = finalBest.overlapPenalty;
         bestResult_.utilization = utilization;
-        bestResult_.validationFailureCount = static_cast<size_t>(std::max(0, finalBest.collisionCount + finalBest.invalidPartCount)) + static_cast<size_t>(finalBest.spacingPenalty > 0.0 ? 1 : 0);
+        bestResult_.validationFailureCount = static_cast<size_t>(std::max(0, finalBest.collisionCount + finalBest.invalidPartCount)) +
+            static_cast<size_t>(finalBest.spacingPenalty > 0.0 ? 1 : 0) +
+            static_cast<size_t>(finalBest.sheetPenalty > 0.0 ? 1 : 0);
         bestResult_.invalidPartCount = static_cast<size_t>(std::max(0, finalBest.invalidPartCount));
         bestResult_.stats = latestStats;
         bestResult_.valid = finalBest.valid();
     }
 
+    const bool finalValid = finalBest.valid();
+    const SolverPhase terminalPhase = stopRequested_.load()
+        ? SolverPhase::Stopped
+        : (finalValid ? SolverPhase::Done : SolverPhase::NoValidLayout);
+    const LayoutState& terminalDisplay = finalValid ? finalBest : finalCurrent;
+
     publishSnapshot(
-        stopRequested_.load() ? SolverPhase::Stopped : SolverPhase::Done,
+        terminalPhase,
         1.0,
-        finalCurrent.poses,
+        terminalDisplay.poses,
         finalBest.poses,
-        static_cast<size_t>(std::max(0, finalBest.collisionCount)),
-        finalBest.overlapPenalty,
-        utilization,
+        static_cast<size_t>(std::max(0, terminalDisplay.collisionCount)),
+        terminalDisplay.overlapPenalty,
+        terminalDisplay.utilization,
         false,
         elapsedSecondsSince(started),
-        static_cast<size_t>(std::max(0, finalBest.collisionCount + finalBest.invalidPartCount)) + static_cast<size_t>(finalBest.spacingPenalty > 0.0 ? 1 : 0),
-        static_cast<size_t>(std::max(0, finalBest.invalidPartCount)),
+        static_cast<size_t>(std::max(0, terminalDisplay.collisionCount + terminalDisplay.invalidPartCount)) +
+            static_cast<size_t>(terminalDisplay.spacingPenalty > 0.0 ? 1 : 0) +
+            static_cast<size_t>(terminalDisplay.sheetPenalty > 0.0 ? 1 : 0),
+        static_cast<size_t>(std::max(0, terminalDisplay.invalidPartCount)),
         latestStats);
     running_.store(false);
 }

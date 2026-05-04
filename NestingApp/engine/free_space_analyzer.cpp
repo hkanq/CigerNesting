@@ -184,6 +184,7 @@ void addConcavityCandidates(
     }
     const double orientation = area > 0.0 ? 1.0 : -1.0;
     const double nudge = std::max(1.0, settings.partSpacing + 2.0);
+    std::vector<Vec2> reflexPoints;
     for (size_t i = 0; i < usable; ++i) {
         const Vec2 prev = points[(i + usable - 1) % usable];
         const Vec2 current = points[i];
@@ -192,6 +193,7 @@ void addConcavityCandidates(
         if (orientation * turn >= -1e-6) {
             continue;
         }
+        reflexPoints.push_back(current);
         Vec2 bisector = (prev - current) + (next - current);
         const double length = bisector.length();
         if (length > 1e-9) {
@@ -200,6 +202,43 @@ void addConcavityCandidates(
         pushCandidate(candidates, document, settings, current, FreeSpaceCandidateKind::Concavity, 65.0, partIndex, ringIndex, ring.bounds);
         pushCandidate(candidates, document, settings, current + bisector * nudge, FreeSpaceCandidateKind::Concavity, 68.0, partIndex, ringIndex, ring.bounds);
         pushCandidate(candidates, document, settings, (prev + current + next) / 3.0, FreeSpaceCandidateKind::Concavity, 58.0, partIndex, ringIndex, ring.bounds);
+    }
+
+    for (size_t a = 0; a < reflexPoints.size(); ++a) {
+        for (size_t b = a + 1; b < reflexPoints.size(); ++b) {
+            const Vec2 p = reflexPoints[a];
+            const Vec2 q = reflexPoints[b];
+            if (std::abs(p.x - q.x) <= 1e-6) {
+                const double openSide = std::abs(ring.bounds.max.x - p.x) > std::abs(p.x - ring.bounds.min.x)
+                    ? ring.bounds.max.x
+                    : ring.bounds.min.x;
+                pushCandidate(
+                    candidates,
+                    document,
+                    settings,
+                    {(p.x + openSide) * 0.5, (p.y + q.y) * 0.5},
+                    FreeSpaceCandidateKind::Concavity,
+                    92.0,
+                    partIndex,
+                    ringIndex,
+                    AABB::fromMinMax({std::min(p.x, openSide), std::min(p.y, q.y)}, {std::max(p.x, openSide), std::max(p.y, q.y)}));
+            }
+            if (std::abs(p.y - q.y) <= 1e-6) {
+                const double openSide = std::abs(ring.bounds.max.y - p.y) > std::abs(p.y - ring.bounds.min.y)
+                    ? ring.bounds.max.y
+                    : ring.bounds.min.y;
+                pushCandidate(
+                    candidates,
+                    document,
+                    settings,
+                    {(p.x + q.x) * 0.5, (p.y + openSide) * 0.5},
+                    FreeSpaceCandidateKind::Concavity,
+                    92.0,
+                    partIndex,
+                    ringIndex,
+                    AABB::fromMinMax({std::min(p.x, q.x), std::min(p.y, openSide)}, {std::max(p.x, q.x), std::max(p.y, openSide)}));
+            }
+        }
     }
 }
 

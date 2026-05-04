@@ -47,12 +47,15 @@ TextId textIdForPhase(SolverPhase phase) {
     case SolverPhase::Exploration: return TextId::Exploration;
     case SolverPhase::CollisionResolution: return TextId::CollisionResolution;
     case SolverPhase::Compression: return TextId::Compression;
+    case SolverPhase::ContactPacking: return TextId::ContactPacking;
     case SolverPhase::GapFilling: return TextId::GapFilling;
     case SolverPhase::Rearrangement: return TextId::Rearrangement;
     case SolverPhase::Escape: return TextId::Escape;
     case SolverPhase::UltraRefinement: return TextId::UltraRefinement;
     case SolverPhase::FinalValidation: return TextId::FinalValidation;
     case SolverPhase::Done: return TextId::Done;
+    case SolverPhase::NoValidLayout: return TextId::NoValidLayout;
+    case SolverPhase::Failed: return TextId::Failed;
     case SolverPhase::Stopped: return TextId::Stopped;
     }
     return TextId::Idle;

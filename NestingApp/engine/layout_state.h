@@ -17,6 +17,7 @@ struct LayoutState {
     double overlapPenalty = 0.0;
     double spacingPenalty = 0.0;
     double sheetPenalty = 0.0;
+    double contactReward = 0.0;
     double totalScore = 0.0;
     std::vector<CollisionPair> collisionPairs;
 

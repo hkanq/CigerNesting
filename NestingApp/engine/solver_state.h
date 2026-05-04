@@ -13,12 +13,15 @@ enum class SolverPhase {
     Exploration,
     CollisionResolution,
     Compression,
+    ContactPacking,
     GapFilling,
     Rearrangement,
     Escape,
     UltraRefinement,
     FinalValidation,
     Done,
+    NoValidLayout,
+    Failed,
     Stopped
 };
 

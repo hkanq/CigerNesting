@@ -5,6 +5,7 @@
 #include "geometry/clearance.h"
 #include "geometry/collision.h"
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <numeric>
 
@@ -168,9 +169,22 @@ void Compression::compressByStrategy(const Document& document, const EngineSetti
     }
 }
 
-LayoutState Compression::compressByScore(const Document& document, const EngineSettings& settings, LayoutState state, const PenaltySystem& penalties, SolverStats* stats) const {
+LayoutState Compression::compressByScore(
+    const Document& document,
+    const EngineSettings& settings,
+    LayoutState state,
+    const PenaltySystem& penalties,
+    SolverStats* stats,
+    const std::atomic_bool* stopRequested) const {
+    auto shouldStop = [&]() {
+        return stopRequested && stopRequested->load();
+    };
+
     LayoutScore scorer;
     state = scorer.evaluate(document, settings, state.poses, &penalties);
+    if (shouldStop()) {
+        return state;
+    }
     const bool largeLayout = document.parts.size() > 60;
     const double initialStep = largeLayout
         ? std::max(4.0, std::min(32.0, std::min(document.sheet.width, document.sheet.height) * 0.04))
@@ -256,9 +270,9 @@ LayoutState Compression::compressByScore(const Document& document, const EngineS
             settings.performanceProfile == PerformanceProfile::Maximum ? 3 : 2;
         LayoutState best = base;
 
-        for (int mode = 0; mode < orderModes; ++mode) {
+        for (int mode = 0; mode < orderModes && !shouldStop(); ++mode) {
             const std::vector<size_t> order = shelfOrder(mode);
-            for (size_t factorIndex = 0; factorIndex < factorCount; ++factorIndex) {
+            for (size_t factorIndex = 0; factorIndex < factorCount && !shouldStop(); ++factorIndex) {
                 const double factor = factors[factorIndex];
                 const double targetWidth = std::max(32.0, std::min(maxWidth, currentWidth * factor));
                 std::vector<Pose> poses = base.poses;
@@ -267,6 +281,9 @@ LayoutState Compression::compressByScore(const Document& document, const EngineS
                 double shelfHeight = 0.0;
 
                 for (size_t index : order) {
+                    if (shouldStop()) {
+                        break;
+                    }
                     if (index >= document.parts.size() || index >= poses.size()) {
                         continue;
                     }
@@ -286,6 +303,9 @@ LayoutState Compression::compressByScore(const Document& document, const EngineS
                     shelfHeight = std::max(shelfHeight, height);
                 }
 
+                if (shouldStop()) {
+                    break;
+                }
                 LayoutState trial = scorer.evaluate(document, settings, poses, &penalties);
                 if (trial.valid() && trial.totalScore + 1e-9 < best.totalScore) {
                     best = std::move(trial);
@@ -357,7 +377,7 @@ LayoutState Compression::compressByScore(const Document& document, const EngineS
     auto pathIsSafe = [&](const LayoutState& base, const LayoutEvalCache& cache, size_t partIndex, int axis, int sign, double distance) {
         const double sampleStep = std::max(1.0, settings.partSpacing * 0.5);
         const int samples = std::max(1, static_cast<int>(std::ceil(distance / sampleStep)));
-        for (int sample = 1; sample <= samples; ++sample) {
+        for (int sample = 1; sample <= samples && !shouldStop(); ++sample) {
             const double d = distance * static_cast<double>(sample) / static_cast<double>(samples);
             const LayoutState trial = evaluateShift(base, cache, partIndex, axis, sign, d);
             if (!trial.valid()) {
@@ -373,7 +393,7 @@ LayoutState Compression::compressByScore(const Document& document, const EngineS
         LayoutState best = base;
         LayoutEvalCache cache;
         cache.rebuild(document, settings, base, &penalties);
-        while (step >= minStep) {
+        while (step >= minStep && !shouldStop()) {
             const double candidateDistance = accepted + step;
             LayoutState trial = evaluateShift(base, cache, partIndex, axis, sign, candidateDistance);
             if (acceptableCompaction(best, trial) && (largeLayout || pathIsSafe(base, cache, partIndex, axis, sign, candidateDistance))) {
@@ -433,15 +453,18 @@ LayoutState Compression::compressByScore(const Document& document, const EngineS
         ? (settings.performanceProfile == PerformanceProfile::Maximum ? 2 : settings.performanceProfile == PerformanceProfile::Balanced ? 2 : 1)
         : (settings.performanceProfile == PerformanceProfile::Fast ? 4 : settings.performanceProfile == PerformanceProfile::Maximum ? 10 : 7);
     const int orderModeLimit = largeLayout ? 1 : 5;
-    for (int pass = 0; pass < passes; ++pass) {
+    for (int pass = 0; pass < passes && !shouldStop(); ++pass) {
         bool changed = false;
         const int firstAxis = pass % 2;
         const int axes[] = {firstAxis, 1 - firstAxis};
         for (int axis : axes) {
             const int sampleSign = state.poses.empty() ? -1 : directionFor(document.parts.front(), state.poses.front(), axis);
-            for (int orderMode = 0; orderMode < orderModeLimit; ++orderMode) {
+            for (int orderMode = 0; orderMode < orderModeLimit && !shouldStop(); ++orderMode) {
                 const std::vector<size_t> order = makeOrder(state, axis, sampleSign == 0 ? -1 : sampleSign, orderMode);
                 for (size_t i : order) {
+                    if (shouldStop()) {
+                        break;
+                    }
                     if (i >= document.parts.size()) {
                         continue;
                     }

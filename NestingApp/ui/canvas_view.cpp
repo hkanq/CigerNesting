@@ -44,12 +44,15 @@ TextId textIdForPhase(SolverPhase phase) {
     case SolverPhase::Exploration: return TextId::Exploration;
     case SolverPhase::CollisionResolution: return TextId::CollisionResolution;
     case SolverPhase::Compression: return TextId::Compression;
+    case SolverPhase::ContactPacking: return TextId::ContactPacking;
     case SolverPhase::GapFilling: return TextId::GapFilling;
     case SolverPhase::Rearrangement: return TextId::Rearrangement;
     case SolverPhase::Escape: return TextId::Escape;
     case SolverPhase::UltraRefinement: return TextId::UltraRefinement;
     case SolverPhase::FinalValidation: return TextId::FinalValidation;
     case SolverPhase::Done: return TextId::Done;
+    case SolverPhase::NoValidLayout: return TextId::NoValidLayout;
+    case SolverPhase::Failed: return TextId::Failed;
     case SolverPhase::Stopped: return TextId::Stopped;
     }
     return TextId::Idle;
@@ -215,10 +218,10 @@ void CanvasView::drawDocument(IRenderer& renderer) {
     renderer.strokeRect({sheetA.x, sheetA.y, sheetB.x - sheetA.x, sheetB.y - sheetA.y}, {54, 66, 74, 255}, 2.0);
 
     const std::vector<Pose>* poses = nullptr;
-    if (hasSnapshot_ && snapshot_.currentPoses.size() == document_->parts.size()) {
-        poses = &snapshot_.currentPoses;
-    } else if (hasSnapshot_ && snapshot_.bestPoses.size() == document_->parts.size()) {
+    if (hasSnapshot_ && snapshot_.bestPoses.size() == document_->parts.size()) {
         poses = &snapshot_.bestPoses;
+    } else if (hasSnapshot_ && snapshot_.currentPoses.size() == document_->parts.size()) {
+        poses = &snapshot_.currentPoses;
     }
 
     for (size_t i = 0; i < document_->parts.size(); ++i) {
