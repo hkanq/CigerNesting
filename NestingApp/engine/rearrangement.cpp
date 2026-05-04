@@ -300,7 +300,7 @@ bool tryEjectionChains(
         return false;
     }
     const std::vector<size_t> targets = rankedParts(document, 0.35, settings.performanceProfile == PerformanceProfile::Maximum ? 48 : 24);
-    const size_t maxDepth = chainDepth(settings);
+    const size_t baseDepth = chainDepth(settings);
     const size_t maxAffected = maxAffectedParts(settings);
     const size_t perPartAnchorLimit = settings.performanceProfile == PerformanceProfile::Maximum ? 72 : settings.performanceProfile == PerformanceProfile::Fast ? 16 : 40;
 
@@ -328,7 +328,13 @@ bool tryEjectionChains(
             }
 
             std::vector<size_t> affected = conflictingParts(document, settings, state.poses, partIndex, targetPose);
-            if (affected.empty() || affected.size() > maxAffected || affected.size() > maxDepth) {
+            size_t adaptiveDepth = baseDepth;
+            if (settings.performanceProfile != PerformanceProfile::Fast &&
+                (anchor.kind == FreeSpaceCandidateKind::PartHole || anchor.kind == FreeSpaceCandidateKind::Concavity) &&
+                state.utilization > 0.35) {
+                adaptiveDepth = std::min(maxAffected, baseDepth + 1);
+            }
+            if (affected.empty() || affected.size() > maxAffected || affected.size() > adaptiveDepth) {
                 continue;
             }
 

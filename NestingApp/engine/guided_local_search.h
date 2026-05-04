@@ -9,6 +9,7 @@
 #include "engine/penalty_system.h"
 #include "engine/pose_sampler.h"
 #include "engine/solver_state.h"
+#include "engine/tabu_memory.h"
 #include "engine/worker_pool.h"
 #include <atomic>
 
@@ -39,6 +40,8 @@ private:
         size_t partIndex,
         unsigned int seed,
         int iteration,
+        int maxIterations,
+        TabuMemory& tabu,
         SolverStats* stats) const;
 };
 

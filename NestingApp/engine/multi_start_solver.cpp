@@ -1,6 +1,7 @@
 #include "engine/multi_start_solver.h"
 
 #include "engine/compression.h"
+#include "engine/escape_search.h"
 #include "engine/gap_filling.h"
 #include "engine/layout_score.h"
 #include "engine/overlap_resolver.h"
@@ -234,6 +235,21 @@ void refreshTimingStats(SolverStats& stats, Clock::time_point started) {
     stats.candidatesPerSecond = static_cast<double>(stats.evaluatedCandidates) / elapsed;
 }
 
+bool posesDiffer(const std::vector<Pose>& a, const std::vector<Pose>& b) {
+    if (a.size() != b.size()) {
+        return true;
+    }
+    for (size_t i = 0; i < a.size(); ++i) {
+        if (std::abs(a[i].x - b[i].x) > 1e-9 ||
+            std::abs(a[i].y - b[i].y) > 1e-9 ||
+            std::abs(a[i].angleRadians - b[i].angleRadians) > 1e-9 ||
+            a[i].mirrored != b[i].mirrored) {
+            return true;
+        }
+    }
+    return false;
+}
+
 struct AttemptResult {
     LayoutState state;
     SolverStats stats;
@@ -414,6 +430,7 @@ LayoutState MultiStartSolver::solve(
             PenaltySystem attemptPenalty;
             OverlapResolver resolver;
             Compression compression;
+            EscapeSearch escapeSearch;
             GapFilling gapFilling;
             Rearrangement rearrangement;
             LayoutScore localScorer;
@@ -437,6 +454,18 @@ LayoutState MultiStartSolver::solve(
             }
             if (state.valid() && !searchStop.load() && !stopRequested.load()) {
                 state = rearrangement.improve(document, settings, std::move(state), attemptPenalty, searchStop, &localStats);
+            }
+            if (state.valid() && !searchStop.load() && !stopRequested.load() &&
+                (settings.performanceProfile != PerformanceProfile::Fast || attempt % 4 == 0)) {
+                LayoutState escaped = escapeSearch.escape(document, settings, state, attemptPenalty, searchStop, seed ^ 0x51f15eedu, &localStats);
+                if (escaped.valid() && posesDiffer(escaped.poses, state.poses)) {
+                    state = resolver.resolve(document, settings, std::move(escaped), attemptPenalty, candidatePool, searchStop, seed ^ 0x7f4a7c15u, &localStats);
+                    if (state.valid() && !searchStop.load() && !stopRequested.load()) {
+                        state = compression.compressByScore(document, settings, std::move(state), attemptPenalty);
+                        state = gapFilling.fillGaps(document, settings, std::move(state), attemptPenalty, searchStop, &localStats);
+                        state = rearrangement.improve(document, settings, std::move(state), attemptPenalty, searchStop, &localStats);
+                    }
+                }
             }
             state = localScorer.evaluate(document, settings, state.poses, &attemptPenalty, &globalSnapshot, 0.10);
             return AttemptResult{std::move(state), localStats, attempt, strategy, seed};
@@ -473,7 +502,8 @@ LayoutState MultiStartSolver::solve(
                 if (callback) {
                     const double progressBase = std::min(0.84, 0.18 + elapsedSeconds(started) / searchLimit * 0.66);
                     refreshTimingStats(aggregateStats, started);
-                    const SolverPhase phase = current.valid() ? SolverPhase::Rearrangement :
+                    const SolverPhase phase = result.stats.escapeAccepted > 0 ? SolverPhase::Escape :
+                        current.valid() ? SolverPhase::Rearrangement :
                         (current.collisionCount == 0 ? SolverPhase::Compression : SolverPhase::CollisionResolution);
                     callback({phase, progressBase, current, best, elapsedSeconds(started), aggregateStats});
                 }
@@ -510,6 +540,22 @@ LayoutState MultiStartSolver::solve(
             current = best;
         }
         if (best.valid()) {
+            if (callback) {
+                refreshTimingStats(aggregateStats, started);
+                callback({SolverPhase::Escape, 0.855, best, best, elapsedSeconds(started), aggregateStats});
+            }
+            EscapeSearch escapeSearch;
+            LayoutState escaped = escapeSearch.escape(document, settings, best, globalPenalty, stopRequested, 0xced15c0u, &aggregateStats);
+            if (escaped.valid() && posesDiffer(escaped.poses, best.poses)) {
+                GapFilling gapFilling;
+                Rearrangement rearrangement;
+                LayoutState escapedOptimized = gapFilling.fillGaps(document, settings, std::move(escaped), globalPenalty, stopRequested, &aggregateStats);
+                escapedOptimized = rearrangement.improve(document, settings, std::move(escapedOptimized), globalPenalty, stopRequested, &aggregateStats);
+                if (escapedOptimized.valid() && escapedOptimized.totalScore + 1e-9 < best.totalScore) {
+                    best = std::move(escapedOptimized);
+                    ++aggregateStats.bestUpdates;
+                }
+            }
             if (callback) {
                 refreshTimingStats(aggregateStats, started);
                 callback({SolverPhase::Rearrangement, 0.87, best, best, elapsedSeconds(started), aggregateStats});

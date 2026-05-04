@@ -58,6 +58,7 @@ enum class TextId {
     Compression,
     GapFilling,
     Rearrangement,
+    Escape,
     UltraRefinement,
     FinalValidation,
     Done,

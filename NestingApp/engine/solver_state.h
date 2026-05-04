@@ -15,6 +15,7 @@ enum class SolverPhase {
     Compression,
     GapFilling,
     Rearrangement,
+    Escape,
     UltraRefinement,
     FinalValidation,
     Done,

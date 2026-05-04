@@ -139,16 +139,19 @@ The solver is no longer limited to a single demo row placement pass. `NestingEng
 - `LayoutScore` evaluates contour collision, spacing, sheet validity, used area, and utilization
 - `EngineSettings::performanceProfile` controls runtime depth separately from geometric validity
 - `PenaltySystem` separates per-attempt pair weights from optional low-weight global bias
+- `AcceptanceCriteria` adds profile-aware simulated annealing so valid but temporarily worse single-part moves can help escape local minima
+- `TabuMemory` keeps approximate recent move/layout hashes to avoid short repeated loops
 - `PoseSampler` generates translation, sheet contact, neighbor-edge contact, hole/forbidden-zone contact, rotation, mirror, and random jump candidates
-- `GuidedLocalSearch` tries candidate moves for colliding parts and accepts score-improving moves
+- `GuidedLocalSearch` tries candidate moves for colliding parts, uses delta scoring first, applies annealing acceptance, and still full-validates accepted candidates
 - `OverlapResolver` runs guided collision resolution while allowing temporarily invalid/overlapping layouts during exploration
 - `Compression` searches for safe movement with large-to-small step refinement and only accepts score-improving valid moves
 - `FreeSpaceAnalyzer` extracts sheet, contour, hole, concavity, used-bounds, and forbidden-zone placement opportunities from the current layout
 - `GapFilling` moves small parts into high-value cavities after compression, using delta scoring first and full contour validation before accepting a move
 - `Rearrangement` tries valid multi-part moves after gap filling: swaps, short ejection chains, and small cluster compaction
+- `EscapeSearch` deliberately disperses a few parts when the search stalls, then the normal optimizers pull the layout back toward a better valid state
 - `MultiStartSolver` runs attempts in parallel through the internal worker pool, cycling placement strategies, seeds, and part orderings within `timeLimitSeconds`, while preserving best-so-far
 - `UltraRefinement` refines the best layout locally with angle ladders, micro-translation correction, optional mirroring, and strict contour validation
-- `SolverStats` reports evaluated candidates, accepted moves, rejection reasons, attempts, worker count, cache hits, swap/chain/cluster move counts, elapsed time, and candidates/second
+- `SolverStats` reports evaluated candidates, accepted moves, worse accepted/rejected moves, tabu rejections, escape use, worker count, cache hits, swap/chain/cluster move counts, elapsed time, and candidates/second
 - `LayoutEvalCache` supports incremental delta scoring for single-part candidate moves, avoiding full layout rescoring for every rejected candidate
 
 Solver quality smoke test target:
@@ -179,6 +182,12 @@ Rearrangement smoke target:
 
 ```powershell
 build\NestingApp\Release\CigerNestingRearrangementSmoke.exe
+```
+
+Escape/adaptive search smoke target:
+
+```powershell
+build\NestingApp\Release\CigerNestingEscapeSmoke.exe
 ```
 
 The stress smoke generates 100, 250, and 500-part synthetic documents and reports Fast/Balanced/Maximum profile throughput. It is intentionally bounded so it can run as a smoke test; full long-running benchmark sweeps should use the main solver with larger `timeLimitSeconds`.
@@ -226,6 +235,19 @@ Profile budgets:
 
 Multi-part moves use full-score fallback instead of pretending they are single-part delta moves. A candidate is accepted only if the final layout is valid: zero collision, zero spacing penalty, zero invalid parts, and valid sheet containment.
 
+## Adaptive Search
+
+The local optimizer now has a controlled local-minimum escape layer:
+
+- simulated annealing acceptance can temporarily accept a worse single-part move when the candidate is delta-valid
+- temperature cools over the local-search iteration budget and is profile-sensitive
+- `Fast` has very low annealing, `Balanced` uses moderate annealing, and `Maximum` is intentionally more exploratory
+- tabu memory blocks recently seen approximate moves and layouts, reducing short oscillation loops
+- adaptive pair penalties raise the cost of repeatedly colliding pairs, mark stalled pairs, and gently decay resolved pairs
+- the `Escape` phase scatters a few validly movable parts, then gap filling/rearrangement/local optimization attempts to recover a better layout
+
+The best-so-far result is still protected. Worse accepted moves can affect the current search trajectory, but the solver only promotes a layout to best when full scoring says it is valid and better.
+
 ## Performance Profiles
 
 `PerformanceProfile` is independent from validity. Every profile still requires zero collision, zero spacing violation, and valid sheet containment.
@@ -268,5 +290,6 @@ Each accepted refinement must improve score and remain valid: no part collision,
 - The solver is now collision-driven v1 with parallel multi-start, but contact candidates are still geometric heuristics rather than a full NFP engine.
 - Gap filling is hole-aware and concavity-aware, but concavity detection is currently based on local reflex vertices rather than a full medial-axis/free-space decomposition.
 - Rearrangement uses bounded swap/ejection/cluster heuristics. It is not yet a full combinatorial optimizer and does not yet do multi-part delta scoring.
+- Adaptive search currently applies annealing to single-part delta moves; multi-part adaptive acceptance still uses full-score safety checks and bounded escape heuristics.
 - Performance stress smoke is bounded and deterministic; it is not a substitute for long industrial benchmark runs.
 - Delta scoring currently optimizes single-part moves; multi-part coupled moves still need full verification/future delta extensions.

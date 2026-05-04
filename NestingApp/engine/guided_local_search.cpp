@@ -1,7 +1,9 @@
 #include "engine/guided_local_search.h"
 
+#include "engine/acceptance.h"
 #include <algorithm>
 #include <future>
+#include <limits>
 #include <mutex>
 #include <vector>
 
@@ -43,6 +45,7 @@ struct CandidateBatchResult {
     bool found = false;
     Pose bestPose;
     double bestScore = 0.0;
+    bool acceptedWorse = false;
     SolverStats stats;
 };
 
@@ -61,6 +64,8 @@ LayoutState GuidedLocalSearch::improve(
     LayoutScore scorer;
     state = scorer.evaluate(document, settings, state.poses, &attemptPenalties);
     CandidateCache cache(settings.performanceProfile == PerformanceProfile::Maximum ? 16384 : settings.performanceProfile == PerformanceProfile::Balanced ? 8192 : 4096);
+    TabuMemory tabu(settings.performanceProfile == PerformanceProfile::Maximum ? 1024 : settings.performanceProfile == PerformanceProfile::Balanced ? 512 : 192);
+    tabu.rememberLayout(state.poses);
 
     for (int iteration = 0; iteration < maxIterations && !stopRequested.load(); ++iteration) {
         const LayoutState before = state;
@@ -85,7 +90,7 @@ LayoutState GuidedLocalSearch::improve(
             if (stopRequested.load()) {
                 break;
             }
-            changed = tryImprovePart(document, settings, state, attemptPenalties, cache, workerPool, stopRequested, partIndex, seed, iteration, stats) || changed;
+            changed = tryImprovePart(document, settings, state, attemptPenalties, cache, workerPool, stopRequested, partIndex, seed, iteration, maxIterations, tabu, stats) || changed;
             if (state.valid()) {
                 break;
             }
@@ -93,7 +98,17 @@ LayoutState GuidedLocalSearch::improve(
 
         state = scorer.evaluate(document, settings, state.poses, &attemptPenalties);
         if (!changed && state.totalScore >= before.totalScore - 1e-9) {
+            for (const CollisionPair& pair : state.collisionPairs) {
+                attemptPenalties.observeStalledPair(pair.a, pair.b);
+            }
             break;
+        }
+        for (const CollisionPair& pair : before.collisionPairs) {
+            if (std::find_if(state.collisionPairs.begin(), state.collisionPairs.end(), [&](const CollisionPair& current) {
+                return (current.a == pair.a && current.b == pair.b) || (current.a == pair.b && current.b == pair.a);
+            }) == state.collisionPairs.end()) {
+                attemptPenalties.observeResolved(pair.a, pair.b);
+            }
         }
     }
 
@@ -111,6 +126,8 @@ bool GuidedLocalSearch::tryImprovePart(
     size_t partIndex,
     unsigned int seed,
     int iteration,
+    int maxIterations,
+    TabuMemory& tabu,
     SolverStats* stats) const {
     if (partIndex >= state.poses.size() || partIndex >= document.parts.size()) {
         return false;
@@ -121,11 +138,13 @@ bool GuidedLocalSearch::tryImprovePart(
     LayoutEvalCache evalCache;
     evalCache.rebuild(document, settings, state, &attemptPenalties);
     Pose bestPose = state.poses[partIndex];
-    double bestScore = state.totalScore;
+    double bestScore = std::numeric_limits<double>::max();
+    bool acceptedWorse = false;
     LayoutState best = state;
     const auto candidates = sampler.moveCandidates(document, settings, state.poses, partIndex, seed, iteration);
     const Pose basePose = state.poses[partIndex];
     std::mutex cacheMutex;
+    AcceptanceCriteria acceptance(settings);
 
     const size_t workerCount = std::max<size_t>(1, std::min(workerPool.threadCount(), candidates.size()));
     const size_t chunkSize = (candidates.size() + workerCount - 1) / workerCount;
@@ -139,8 +158,12 @@ bool GuidedLocalSearch::tryImprovePart(
             break;
         }
         futures.push_back(workerPool.enqueue([&, begin, end]() {
-            CandidateBatchResult result{false, basePose, state.totalScore, {}};
+            CandidateBatchResult result{false, basePose, std::numeric_limits<double>::max(), false, {}};
             for (size_t i = begin; i < end && !stopRequested.load(); ++i) {
+                if (tabu.containsMove(partIndex, basePose, candidates[i])) {
+                    ++result.stats.tabuRejected;
+                    continue;
+                }
                 CachedCandidateScore cached;
                 bool cacheHit = false;
                 {
@@ -150,17 +173,26 @@ bool GuidedLocalSearch::tryImprovePart(
 
                 if (cacheHit) {
                     ++result.stats.cacheHits;
-                    if (cached.totalScore + 1e-9 >= result.bestScore) {
-                        continue;
-                    }
                 } else {
                     ++result.stats.cacheMisses;
                 }
 
-                const DeltaMove move{partIndex, basePose, candidates[i]};
-                const DeltaEvaluation trial = evaluateMoveDelta(document, settings, state, evalCache, move);
+                DeltaEvaluation trial;
+                if (cacheHit) {
+                    trial.valid = cached.valid;
+                    trial.totalScore = cached.totalScore;
+                    trial.collisionCount = cached.collisionCount;
+                    trial.invalidPartCount = cached.invalidPartCount;
+                    trial.spacingPenalty = cached.spacingPenalty;
+                    trial.sheetPenalty = cached.sheetPenalty;
+                } else {
+                    const DeltaMove move{partIndex, basePose, candidates[i]};
+                    trial = evaluateMoveDelta(document, settings, state, evalCache, move);
+                }
                 ++result.stats.evaluatedCandidates;
-                classifyCandidate(trial, result.stats);
+                if (!trial.valid) {
+                    classifyCandidate(trial, result.stats);
+                }
                 if (!cacheHit) {
                     const CachedCandidateScore score{
                         trial.totalScore,
@@ -173,10 +205,30 @@ bool GuidedLocalSearch::tryImprovePart(
                     std::lock_guard<std::mutex> lock(cacheMutex);
                     cache.put(partIndex, basePose, candidates[i], score);
                 }
+
+                if (!trial.valid) {
+                    continue;
+                }
+
+                const AcceptanceDecision decision = acceptance.decide(
+                    state.totalScore,
+                    trial.totalScore,
+                    iteration,
+                    maxIterations,
+                    seed + static_cast<unsigned int>(partIndex * 7919u),
+                    i);
+                if (!decision.accepted) {
+                    if (trial.totalScore > state.totalScore) {
+                        ++result.stats.rejectedWorseMoves;
+                    }
+                    continue;
+                }
+
                 if (trial.totalScore + 1e-9 < result.bestScore) {
                     result.found = true;
                     result.bestPose = candidates[i];
                     result.bestScore = trial.totalScore;
+                    result.acceptedWorse = decision.acceptedWorse;
                 }
             }
             return result;
@@ -191,19 +243,33 @@ bool GuidedLocalSearch::tryImprovePart(
         if (trial.found && trial.bestScore + 1e-9 < bestScore) {
             bestPose = trial.bestPose;
             bestScore = trial.bestScore;
+            acceptedWorse = trial.acceptedWorse;
         }
     }
 
-    if (bestScore + 1e-9 < state.totalScore) {
+    if (bestScore < std::numeric_limits<double>::max()) {
         std::vector<Pose> trialPoses = state.poses;
         trialPoses[partIndex] = bestPose;
+        if (tabu.containsLayout(trialPoses)) {
+            if (stats) {
+                ++stats->tabuRejected;
+            }
+            tabu.rememberMove(partIndex, basePose, bestPose);
+            return false;
+        }
         best = scorer.evaluate(document, settings, trialPoses, &attemptPenalties);
     }
 
-    if (best.totalScore + 1e-9 < state.totalScore) {
+    if (best.valid() && (best.totalScore + 1e-9 < state.totalScore || acceptedWorse)) {
+        const bool isWorse = best.totalScore > state.totalScore + 1e-9;
         state = std::move(best);
+        tabu.rememberMove(partIndex, basePose, bestPose);
+        tabu.rememberLayout(state.poses);
         if (stats) {
             ++stats->acceptedMoves;
+            if (isWorse) {
+                ++stats->acceptedWorseMoves;
+            }
         }
         return true;
     }
