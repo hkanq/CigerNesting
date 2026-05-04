@@ -1,0 +1,71 @@
+{
+  "inputFile": "./samples/benchmark/b_shape_hole_usage.svg",
+  "caseName": "b_shape_hole_usage",
+  "profile": "Fast",
+  "settings": {
+    "sheetWidth": 560.000000,
+    "sheetHeight": 360.000000,
+    "partSpacing": 3.000000,
+    "margin": 8.000000,
+    "rotationMode": "RightAngles",
+    "rotationStepDegrees": 90.000000,
+    "allowMirroring": true,
+    "placementStrategy": "CenterOut",
+    "performanceProfile": "Fast",
+    "timeLimitSeconds": 0.180000,
+    "cpuThreadCount": 1,
+    "randomSeed": 106,
+    "deterministic": true
+  },
+  "sheet": {
+    "width": 560.000000,
+    "height": 360.000000,
+    "margin": 8.000000,
+    "hasCustomProfile": false,
+    "holeCount": 0,
+    "forbiddenZoneCount": 0
+  },
+  "partsCount": 13,
+  "finalPoses": [
+    {"part": 0, "x": 24.000000, "y": -12.000000, "angleRadians": 0.000000, "mirrored": false},
+    {"part": 1, "x": -37.187500, "y": 193.000000, "angleRadians": 0.000000, "mirrored": false},
+    {"part": 2, "x": -157.187500, "y": 193.000000, "angleRadians": 0.000000, "mirrored": false},
+    {"part": 3, "x": 142.812500, "y": 491.000000, "angleRadians": 1.570796, "mirrored": true},
+    {"part": 4, "x": 229.000000, "y": -83.375000, "angleRadians": 1.570796, "mirrored": false},
+    {"part": 5, "x": -72.187500, "y": 151.000000, "angleRadians": 0.000000, "mirrored": false},
+    {"part": 6, "x": 253.812500, "y": -0.156250, "angleRadians": 1.570796, "mirrored": false},
+    {"part": 7, "x": 167.812500, "y": -33.000000, "angleRadians": 1.570796, "mirrored": false},
+    {"part": 8, "x": 253.000000, "y": -85.062500, "angleRadians": 1.570796, "mirrored": false},
+    {"part": 9, "x": -3.187500, "y": 110.687500, "angleRadians": 0.000000, "mirrored": false},
+    {"part": 10, "x": -87.187500, "y": 109.000000, "angleRadians": 0.000000, "mirrored": false},
+    {"part": 11, "x": 73.000000, "y": 278.000000, "angleRadians": 4.712389, "mirrored": false},
+    {"part": 12, "x": 294.000000, "y": -278.000000, "angleRadians": 1.570796, "mirrored": false}
+  ],
+  "score": {
+    "totalScore": 29524.794781,
+    "utilization": 0.642819,
+    "usedWidth": 157.000000,
+    "usedHeight": 229.000000,
+    "collisions": 0,
+    "invalid": 0,
+    "spacingPenalty": 0.000000,
+    "sheetPenalty": 0.000000
+  },
+  "stats": {
+    "elapsedMs": 3172.055100,
+    "evaluatedCandidates": 366,
+    "candidatesPerSecond": 115.382611,
+    "acceptedMoves": 118,
+    "acceptedWorseMoves": 0,
+    "bestUpdates": 4,
+    "gapAccepted": 0,
+    "swapAccepted": 0,
+    "chainAccepted": 0,
+    "escapeAccepted": 0,
+    "ultraAccepted": 0,
+    "compactionAccepted": 117,
+    "frontierCandidates": 0,
+    "smallFillerAccepted": 0,
+    "regionRepackAccepted": 0
+  }
+}

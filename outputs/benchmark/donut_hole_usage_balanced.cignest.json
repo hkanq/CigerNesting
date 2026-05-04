@@ -1,0 +1,69 @@
+{
+  "inputFile": "./samples/benchmark/donut_hole_usage.svg",
+  "caseName": "donut_hole_usage",
+  "profile": "Balanced",
+  "settings": {
+    "sheetWidth": 520.000000,
+    "sheetHeight": 320.000000,
+    "partSpacing": 3.000000,
+    "margin": 8.000000,
+    "rotationMode": "RightAngles",
+    "rotationStepDegrees": 90.000000,
+    "allowMirroring": false,
+    "placementStrategy": "CenterOut",
+    "performanceProfile": "Balanced",
+    "timeLimitSeconds": 1.000000,
+    "cpuThreadCount": 1,
+    "randomSeed": 105,
+    "deterministic": true
+  },
+  "sheet": {
+    "width": 520.000000,
+    "height": 320.000000,
+    "margin": 8.000000,
+    "hasCustomProfile": false,
+    "holeCount": 0,
+    "forbiddenZoneCount": 0
+  },
+  "partsCount": 11,
+  "finalPoses": [
+    {"part": 0, "x": -12.000000, "y": 8.000000, "angleRadians": 0.000000, "mirrored": false},
+    {"part": 1, "x": 26.000000, "y": 131.000000, "angleRadians": 0.000000, "mirrored": false},
+    {"part": 2, "x": -23.000000, "y": 111.000000, "angleRadians": 0.000000, "mirrored": false},
+    {"part": 3, "x": 225.000000, "y": -106.000000, "angleRadians": 1.570796, "mirrored": false},
+    {"part": 4, "x": -41.000000, "y": 111.000000, "angleRadians": 0.000000, "mirrored": false},
+    {"part": 5, "x": 263.000000, "y": -161.000000, "angleRadians": 1.570796, "mirrored": false},
+    {"part": 6, "x": 242.000000, "y": -50.000000, "angleRadians": 1.570796, "mirrored": false},
+    {"part": 7, "x": 15.000000, "y": 97.000000, "angleRadians": 0.000000, "mirrored": false},
+    {"part": 8, "x": -32.000000, "y": 77.000000, "angleRadians": 0.000000, "mirrored": false},
+    {"part": 9, "x": 134.000000, "y": 452.000000, "angleRadians": 4.712389, "mirrored": false},
+    {"part": 10, "x": -120.000000, "y": 97.000000, "angleRadians": 0.000000, "mirrored": false}
+  ],
+  "score": {
+    "totalScore": 33179.460988,
+    "utilization": 0.567053,
+    "usedWidth": 259.000000,
+    "usedHeight": 150.000000,
+    "collisions": 0,
+    "invalid": 0,
+    "spacingPenalty": 0.000000,
+    "sheetPenalty": 0.000000
+  },
+  "stats": {
+    "elapsedMs": 1505.861800,
+    "evaluatedCandidates": 2071,
+    "candidatesPerSecond": 1375.292208,
+    "acceptedMoves": 97,
+    "acceptedWorseMoves": 0,
+    "bestUpdates": 3,
+    "gapAccepted": 0,
+    "swapAccepted": 0,
+    "chainAccepted": 0,
+    "escapeAccepted": 0,
+    "ultraAccepted": 0,
+    "compactionAccepted": 97,
+    "frontierCandidates": 0,
+    "smallFillerAccepted": 0,
+    "regionRepackAccepted": 0
+  }
+}
