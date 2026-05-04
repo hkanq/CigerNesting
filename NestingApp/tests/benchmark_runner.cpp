@@ -63,6 +63,10 @@ struct BenchmarkRow {
     size_t chainAccepted = 0;
     size_t escapeAccepted = 0;
     size_t ultraAccepted = 0;
+    size_t compactionAccepted = 0;
+    size_t frontierCandidates = 0;
+    size_t smallFillerAccepted = 0;
+    size_t regionRepackAccepted = 0;
     double finalScore = 0.0;
     bool qualityPass = false;
     bool profilePass = false;
@@ -205,7 +209,7 @@ double timeLimitFor(size_t partCount, PerformanceProfile profile) {
         switch (profile) {
         case PerformanceProfile::Fast: return 0.18;
         case PerformanceProfile::Balanced: return 1.00;
-        case PerformanceProfile::Maximum: return 4.00;
+        case PerformanceProfile::Maximum: return 8.00;
         default: return 1.00;
         }
     }
@@ -227,8 +231,8 @@ double timeLimitFor(size_t partCount, PerformanceProfile profile) {
     }
     switch (profile) {
     case PerformanceProfile::Fast: return 0.35;
-    case PerformanceProfile::Balanced: return 0.55;
-    case PerformanceProfile::Maximum: return 0.85;
+    case PerformanceProfile::Balanced: return 1.50;
+    case PerformanceProfile::Maximum: return 3.00;
     default: return 0.55;
     }
 }
@@ -457,7 +461,11 @@ void writeJsonOutput(
     out << "    \"swapAccepted\": " << stats.swapAccepted << ",\n";
     out << "    \"chainAccepted\": " << stats.chainAccepted << ",\n";
     out << "    \"escapeAccepted\": " << stats.escapeAccepted << ",\n";
-    out << "    \"ultraAccepted\": " << stats.ultraAccepted << "\n";
+    out << "    \"ultraAccepted\": " << stats.ultraAccepted << ",\n";
+    out << "    \"compactionAccepted\": " << stats.compactionAccepted << ",\n";
+    out << "    \"frontierCandidates\": " << stats.frontierCandidates << ",\n";
+    out << "    \"smallFillerAccepted\": " << stats.smallFillerAccepted << ",\n";
+    out << "    \"regionRepackAccepted\": " << stats.regionRepackAccepted << "\n";
     out << "  }\n";
     out << "}\n";
 }
@@ -519,6 +527,10 @@ BenchmarkRow runBenchmark(
     row.chainAccepted = stats.chainAccepted;
     row.escapeAccepted = stats.escapeAccepted;
     row.ultraAccepted = stats.ultraAccepted;
+    row.compactionAccepted = stats.compactionAccepted;
+    row.frontierCandidates = stats.frontierCandidates;
+    row.smallFillerAccepted = stats.smallFillerAccepted;
+    row.regionRepackAccepted = stats.regionRepackAccepted;
     row.finalScore = solved.totalScore;
     row.qualityPass = solved.collisionCount == 0 &&
         solved.invalidPartCount == 0 &&
@@ -540,7 +552,7 @@ void writeCsv(const std::filesystem::path& csvPath, const std::vector<BenchmarkR
     if (!csv) {
         return;
     }
-    csv << "caseName,partCount,profile,elapsedMs,utilization,usedWidth,usedHeight,collisions,invalid,spacingPenalty,bestUpdates,evaluatedCandidates,candidatesPerSecond,acceptedMoves,acceptedWorseMoves,gapAccepted,swapAccepted,chainAccepted,escapeAccepted,ultraAccepted,finalScore,status\n";
+    csv << "caseName,partCount,profile,elapsedMs,utilization,usedWidth,usedHeight,collisions,invalid,spacingPenalty,sheetPenalty,bestUpdates,evaluatedCandidates,candidatesPerSecond,acceptedMoves,acceptedWorseMoves,gapAccepted,swapAccepted,chainAccepted,escapeAccepted,ultraAccepted,compactionAccepted,frontierCandidates,smallFillerAccepted,regionRepackAccepted,finalScore,status\n";
     csv << std::fixed << std::setprecision(6);
     for (const BenchmarkRow& row : rows) {
         csv << row.caseName << ','
@@ -553,6 +565,7 @@ void writeCsv(const std::filesystem::path& csvPath, const std::vector<BenchmarkR
             << row.collisions << ','
             << row.invalid << ','
             << row.spacingPenalty << ','
+            << row.sheetPenalty << ','
             << row.bestUpdates << ','
             << row.evaluatedCandidates << ','
             << row.candidatesPerSecond << ','
@@ -563,6 +576,10 @@ void writeCsv(const std::filesystem::path& csvPath, const std::vector<BenchmarkR
             << row.chainAccepted << ','
             << row.escapeAccepted << ','
             << row.ultraAccepted << ','
+            << row.compactionAccepted << ','
+            << row.frontierCandidates << ','
+            << row.smallFillerAccepted << ','
+            << row.regionRepackAccepted << ','
             << row.finalScore << ','
             << (row.profilePass ? "PASS" : "FAIL") << '\n';
     }
@@ -579,6 +596,7 @@ void printHumanRow(const BenchmarkRow& row) {
         << " collisions=" << row.collisions
         << " invalid=" << row.invalid
         << " spacingPenalty=" << std::setprecision(6) << row.spacingPenalty
+        << " sheetPenalty=" << row.sheetPenalty
         << " bestUpdates=" << row.bestUpdates
         << " cps=" << std::setprecision(1) << row.candidatesPerSecond;
     if (!row.failureReason.empty()) {
@@ -612,6 +630,38 @@ bool deterministicCheck(const BenchmarkCase& benchmarkCase, const std::filesyste
     const LayoutState first = solveOnce(benchmarkCase, PerformanceProfile::Balanced, root);
     const LayoutState second = solveOnce(benchmarkCase, PerformanceProfile::Balanced, root);
     return first.valid() && second.valid() && layoutAlmostEqual(first, second);
+}
+
+BenchmarkRow* findRow(std::vector<BenchmarkRow>& rows, const std::string& caseName, PerformanceProfile profile) {
+    for (BenchmarkRow& row : rows) {
+        if (row.caseName == caseName && row.profile == profile) {
+            return &row;
+        }
+    }
+    return nullptr;
+}
+
+const BenchmarkRow* findRow(const std::vector<BenchmarkRow>& rows, const std::string& caseName, PerformanceProfile profile) {
+    for (const BenchmarkRow& row : rows) {
+        if (row.caseName == caseName && row.profile == profile) {
+            return &row;
+        }
+    }
+    return nullptr;
+}
+
+bool applyQualityGoal(std::vector<BenchmarkRow>& rows, const std::string& caseName, bool condition, const char* message) {
+    if (condition) {
+        std::cout << "PASS quality_goal case=" << caseName << " rule=" << message << "\n";
+        return true;
+    }
+    BenchmarkRow* maximum = findRow(rows, caseName, PerformanceProfile::Maximum);
+    if (maximum) {
+        maximum->profilePass = false;
+        maximum->failureReason = message;
+    }
+    std::cout << "FAIL quality_goal case=" << caseName << " rule=" << message << "\n";
+    return false;
 }
 
 std::vector<BenchmarkCase> benchmarkCases() {
@@ -671,6 +721,49 @@ int wmain(int argc, wchar_t** argv) {
         if (fastIndex < rows.size() && !rows[fastIndex].qualityPass) {
             allPass = false;
         }
+    }
+
+    const BenchmarkRow* manyFast = findRow(rows, "many_small_parts", PerformanceProfile::Fast);
+    const BenchmarkRow* manyMaximum = findRow(rows, "many_small_parts", PerformanceProfile::Maximum);
+    if (manyFast && manyMaximum) {
+        const double fastArea = manyFast->usedWidth * manyFast->usedHeight;
+        const double maximumArea = manyMaximum->usedWidth * manyMaximum->usedHeight;
+        allPass = applyQualityGoal(rows, "many_small_parts", manyMaximum->bestUpdates > 1, "Maximum bestUpdates > 1") && allPass;
+        allPass = applyQualityGoal(rows, "many_small_parts",
+            manyMaximum->utilization > manyFast->utilization + 1e-6 || maximumArea + 1e-6 < fastArea,
+            "Maximum improves utilization or used area vs Fast") && allPass;
+    }
+
+    const BenchmarkRow* mixed100Maximum = findRow(rows, "mixed_100_parts", PerformanceProfile::Maximum);
+    if (mixed100Maximum) {
+        allPass = applyQualityGoal(rows, "mixed_100_parts", mixed100Maximum->bestUpdates > 0, "Maximum bestUpdates > 0") && allPass;
+    }
+
+    const BenchmarkRow* mixed500Maximum = findRow(rows, "mixed_500_parts", PerformanceProfile::Maximum);
+    if (mixed500Maximum) {
+        allPass = applyQualityGoal(rows, "mixed_500_parts", mixed500Maximum->bestUpdates > 0, "Maximum bestUpdates > 0") && allPass;
+    }
+
+    const BenchmarkCase* mirrorCase = nullptr;
+    for (const BenchmarkCase& benchmarkCase : cases) {
+        if (benchmarkCase.name == "mirror_required") {
+            mirrorCase = &benchmarkCase;
+            break;
+        }
+    }
+    const BenchmarkRow* mirrorEnabled = findRow(rows, "mirror_required", PerformanceProfile::Balanced);
+    if (mirrorCase && mirrorEnabled) {
+        BenchmarkCase disabled = *mirrorCase;
+        disabled.name = "mirror_required_disabled";
+        disabled.allowMirroring = false;
+        BenchmarkRow disabledRow = runBenchmark(disabled, PerformanceProfile::Balanced, root, outputDir);
+        const bool mirrorPass = disabledRow.qualityPass && mirrorEnabled->qualityPass &&
+            scoreNoWorse(mirrorEnabled->finalScore, disabledRow.finalScore);
+        std::cout << (mirrorPass ? "PASS" : "FAIL")
+                  << " mirror_comparison disabledScore=" << disabledRow.finalScore
+                  << " enabledScore=" << mirrorEnabled->finalScore << "\n";
+        rows.push_back(std::move(disabledRow));
+        allPass = mirrorPass && allPass;
     }
 
     const bool deterministicPass = deterministicCheck(cases.front(), root);

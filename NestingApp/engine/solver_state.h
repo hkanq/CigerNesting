@@ -49,6 +49,10 @@ struct SolverStats {
     size_t escapeAttempts = 0;
     size_t escapeAccepted = 0;
     size_t ultraAccepted = 0;
+    size_t compactionAccepted = 0;
+    size_t frontierCandidates = 0;
+    size_t smallFillerAccepted = 0;
+    size_t regionRepackAccepted = 0;
 };
 
 struct SolverSnapshot {

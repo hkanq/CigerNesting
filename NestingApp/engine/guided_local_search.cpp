@@ -31,6 +31,10 @@ void mergeStats(SolverStats& target, const SolverStats& source) {
     target.escapeAttempts += source.escapeAttempts;
     target.escapeAccepted += source.escapeAccepted;
     target.ultraAccepted += source.ultraAccepted;
+    target.compactionAccepted += source.compactionAccepted;
+    target.frontierCandidates += source.frontierCandidates;
+    target.smallFillerAccepted += source.smallFillerAccepted;
+    target.regionRepackAccepted += source.regionRepackAccepted;
 }
 
 void classifyCandidate(const DeltaEvaluation& trial, SolverStats& stats) {

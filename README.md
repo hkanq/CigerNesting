@@ -144,14 +144,17 @@ The solver is no longer limited to a single demo row placement pass. `NestingEng
 - `PoseSampler` generates translation, sheet contact, neighbor-edge contact, hole/forbidden-zone contact, rotation, mirror, and random jump candidates
 - `GuidedLocalSearch` tries candidate moves for colliding parts, uses delta scoring first, applies annealing acceptance, and still full-validates accepted candidates
 - `OverlapResolver` runs guided collision resolution while allowing temporarily invalid/overlapping layouts during exploration
-- `Compression` searches for safe movement with large-to-small step refinement and only accepts score-improving valid moves
+- `Compression` searches for safe movement with large-to-small step refinement, profile-aware shelf repack, horizontal/vertical sweep compaction, alternating XY passes, and strategy-aware movement directions
+- `FrontierAnalyzer` extracts skyline/frontier candidates from sheet bounds, current used edges, common part bbox coordinates, sparse grid cells, and contact snap lines
+- `SmallPartFiller` targets small or fringe parts and tries to move them into frontier/gap candidates without relaxing collision, clearance, or sheet validation
+- `RegionRepack` identifies sparse low-density regions in the used bounds and attempts a bounded local repack around those regions
 - `FreeSpaceAnalyzer` extracts sheet, contour, hole, concavity, used-bounds, and forbidden-zone placement opportunities from the current layout
 - `GapFilling` moves small parts into high-value cavities after compression, using delta scoring first and full contour validation before accepting a move
 - `Rearrangement` tries valid multi-part moves after gap filling: swaps, short ejection chains, and small cluster compaction
 - `EscapeSearch` deliberately disperses a few parts when the search stalls, then the normal optimizers pull the layout back toward a better valid state
 - `MultiStartSolver` runs attempts in parallel through the internal worker pool, cycling placement strategies, seeds, and part orderings within `timeLimitSeconds`, while preserving best-so-far
 - `UltraRefinement` refines the best layout locally with angle ladders, micro-translation correction, optional mirroring, and strict contour validation
-- `SolverStats` reports evaluated candidates, accepted moves, worse accepted/rejected moves, tabu rejections, escape use, worker count, cache hits, swap/chain/cluster move counts, elapsed time, and candidates/second
+- `SolverStats` reports evaluated candidates, accepted moves, worse accepted/rejected moves, tabu rejections, escape use, worker count, cache hits, compaction/frontier/filler/repack counts, swap/chain/cluster move counts, elapsed time, and candidates/second
 - `LayoutEvalCache` supports incremental delta scoring for single-part candidate moves, avoiding full layout rescoring for every rejected candidate
 
 Solver quality smoke test target:
@@ -164,6 +167,12 @@ Performance stress smoke target:
 
 ```powershell
 build\NestingApp\Release\CigerNestingPerformanceStressSmoke.exe
+```
+
+Large-scale quality smoke target:
+
+```powershell
+build\NestingApp\Release\CigerNestingLargeScaleQualitySmoke.exe <repo-root>
 ```
 
 Delta scoring smoke target:
@@ -218,6 +227,18 @@ The solver now has a cavity-aware pass between compression and ultra refinement:
 The pass targets smaller parts first, roughly the lower 30% by footprint, so holes in donut/B-like parts and concave notches are tried before spending budget on large pieces. Each candidate is evaluated with `LayoutEvalCache::evaluateMoveDelta`; accepted candidates are then rechecked with full `LayoutScore`, real contour collision, clearance, sheet containment, and sheet margin rules.
 
 `LayoutScore` also includes a small cavity-placement reward when a part is validly inside another part's hole. This does not relax collision or clearance. It only helps the search prefer equally valid compact layouts that actively use internal voids.
+
+## General Large-Scale Quality
+
+The solver has an additional set of general-purpose quality passes for mixed jobs that do not contain obvious holes or concavities:
+
+- strengthened strip/line compaction runs shelf repack first, then safe maximum shifts in horizontal and vertical sweeps
+- alternating XY compaction changes axis order between passes so row-biased layouts can still shrink vertically
+- frontier analysis generates candidates from sheet sides, current layout frontiers, bbox edge alignments, skyline cells, and contact snap positions
+- small-part filler can temporarily move selected small/fringe parts into those frontier candidates and accepts the move only after full validation
+- region repack splits the used area into a grid, finds sparse cells, and tries a bounded local repack for parts around those cells
+
+These passes are intentionally heuristic, but they are not shortcuts around validation. Accepted results must still have zero collision, zero spacing penalty, zero sheet penalty, and zero invalid parts.
 
 ## Rearrangement
 
@@ -302,7 +323,7 @@ outputs\benchmark\<case>_<profile>.result.svg
 The CSV contains the quality/performance columns used for regression tracking:
 
 ```text
-caseName,partCount,profile,elapsedMs,utilization,usedWidth,usedHeight,collisions,invalid,spacingPenalty,bestUpdates,evaluatedCandidates,candidatesPerSecond,acceptedMoves,acceptedWorseMoves,gapAccepted,swapAccepted,chainAccepted,escapeAccepted,ultraAccepted,finalScore,status
+caseName,partCount,profile,elapsedMs,utilization,usedWidth,usedHeight,collisions,invalid,spacingPenalty,sheetPenalty,bestUpdates,evaluatedCandidates,candidatesPerSecond,acceptedMoves,acceptedWorseMoves,gapAccepted,swapAccepted,chainAccepted,escapeAccepted,ultraAccepted,compactionAccepted,frontierCandidates,smallFillerAccepted,regionRepackAccepted,finalScore,status
 ```
 
 Each benchmark run is strict about validity:
@@ -312,6 +333,7 @@ Each benchmark run is strict about validity:
 - `spacingPenalty == 0`
 - `sheetPenalty == 0`
 - `Maximum` must not produce a worse final score than `Fast`
+- large-scale quality goals require `many_small_parts`, `mixed_100_parts`, and `mixed_500_parts` to produce best-so-far improvements in `Maximum`
 
 Benchmark settings run with `EngineSettings::deterministic = true`, `randomSeed` fixed per case, and `cpuThreadCount = 1`. This intentionally favors reproducibility over maximum throughput. The runner also repeats one deterministic case internally and fails if the same input/seed/profile produces a different scored layout.
 

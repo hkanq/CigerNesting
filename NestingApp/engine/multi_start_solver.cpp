@@ -8,6 +8,8 @@
 #include "engine/parallel_collision_evaluator.h"
 #include "engine/pose_sampler.h"
 #include "engine/rearrangement.h"
+#include "engine/region_repack.h"
+#include "engine/small_part_filler.h"
 #include "engine/ultra_refinement.h"
 #include "engine/worker_pool.h"
 #include <algorithm>
@@ -229,6 +231,10 @@ void mergeStats(SolverStats& target, const SolverStats& source) {
     target.escapeAttempts += source.escapeAttempts;
     target.escapeAccepted += source.escapeAccepted;
     target.ultraAccepted += source.ultraAccepted;
+    target.compactionAccepted += source.compactionAccepted;
+    target.frontierCandidates += source.frontierCandidates;
+    target.smallFillerAccepted += source.smallFillerAccepted;
+    target.regionRepackAccepted += source.regionRepackAccepted;
 }
 
 void refreshTimingStats(SolverStats& stats, Clock::time_point started) {
@@ -253,9 +259,9 @@ bool posesDiffer(const std::vector<Pose>& a, const std::vector<Pose>& b) {
 }
 
 double phaseGuardSeconds(size_t partCount, PerformanceProfile profile, double multiplier) {
-    const double perPart = profile == PerformanceProfile::Maximum ? 0.0020 :
-        profile == PerformanceProfile::Balanced ? 0.0015 : 0.0010;
-    return std::min(2.0, std::max(0.03, static_cast<double>(partCount) * perPart * multiplier));
+    const double perPart = profile == PerformanceProfile::Maximum ? 0.00030 :
+        profile == PerformanceProfile::Balanced ? 0.00022 : 0.00015;
+    return std::min(0.35, std::max(0.02, static_cast<double>(partCount) * perPart * multiplier));
 }
 
 bool hasPhaseBudget(Clock::time_point started, double limitSeconds, size_t partCount, PerformanceProfile profile, double multiplier) {
@@ -446,6 +452,8 @@ LayoutState MultiStartSolver::solve(
             EscapeSearch escapeSearch;
             GapFilling gapFilling;
             Rearrangement rearrangement;
+            SmallPartFiller smallPartFiller;
+            RegionRepack regionRepack;
             LayoutScore localScorer;
             const size_t candidateThreads = std::max<size_t>(1, ParallelCollisionEvaluator::resolveThreadCount(settings) / std::max<size_t>(1, attemptThreads));
             WorkerPool candidatePool(candidateThreads);
@@ -457,15 +465,19 @@ LayoutState MultiStartSolver::solve(
             state = resolver.resolve(document, settings, std::move(state), attemptPenalty, candidatePool, searchStop, seed, &localStats);
             if (state.collisionCount == 0 && state.invalidPartCount == 0 && !stopRequested.load() &&
                 hasPhaseBudget(started, searchLimit, document.parts.size(), settings.performanceProfile, 0.50)) {
-                const double beforeCompression = state.totalScore;
-                state = compression.compressByScore(document, settings, std::move(state), attemptPenalty);
-                if (state.totalScore + 1e-9 < beforeCompression) {
-                    ++localStats.acceptedMoves;
-                }
+                state = compression.compressByScore(document, settings, std::move(state), attemptPenalty, &localStats);
+            }
+            if (state.valid() && !searchStop.load() && !stopRequested.load() &&
+                hasPhaseBudget(started, searchLimit, document.parts.size(), settings.performanceProfile, 1.00)) {
+                state = smallPartFiller.fill(document, settings, std::move(state), attemptPenalty, searchStop, &localStats);
             }
             if (state.valid() && !searchStop.load() && !stopRequested.load() &&
                 hasPhaseBudget(started, searchLimit, document.parts.size(), settings.performanceProfile, 1.00)) {
                 state = gapFilling.fillGaps(document, settings, std::move(state), attemptPenalty, searchStop, &localStats);
+            }
+            if (state.valid() && !searchStop.load() && !stopRequested.load() &&
+                hasPhaseBudget(started, searchLimit, document.parts.size(), settings.performanceProfile, 1.00)) {
+                state = regionRepack.improve(document, settings, std::move(state), attemptPenalty, searchStop, &localStats);
             }
             if (state.valid() && !searchStop.load() && !stopRequested.load() &&
                 hasPhaseBudget(started, searchLimit, document.parts.size(), settings.performanceProfile, 1.00)) {
@@ -479,10 +491,16 @@ LayoutState MultiStartSolver::solve(
                     state = resolver.resolve(document, settings, std::move(escaped), attemptPenalty, candidatePool, searchStop, seed ^ 0x7f4a7c15u, &localStats);
                     if (state.valid() && !searchStop.load() && !stopRequested.load()) {
                         if (hasPhaseBudget(started, searchLimit, document.parts.size(), settings.performanceProfile, 0.50)) {
-                            state = compression.compressByScore(document, settings, std::move(state), attemptPenalty);
+                            state = compression.compressByScore(document, settings, std::move(state), attemptPenalty, &localStats);
+                        }
+                        if (hasPhaseBudget(started, searchLimit, document.parts.size(), settings.performanceProfile, 1.00)) {
+                            state = smallPartFiller.fill(document, settings, std::move(state), attemptPenalty, searchStop, &localStats);
                         }
                         if (hasPhaseBudget(started, searchLimit, document.parts.size(), settings.performanceProfile, 1.00)) {
                             state = gapFilling.fillGaps(document, settings, std::move(state), attemptPenalty, searchStop, &localStats);
+                        }
+                        if (hasPhaseBudget(started, searchLimit, document.parts.size(), settings.performanceProfile, 1.00)) {
+                            state = regionRepack.improve(document, settings, std::move(state), attemptPenalty, searchStop, &localStats);
                         }
                         if (hasPhaseBudget(started, searchLimit, document.parts.size(), settings.performanceProfile, 1.00)) {
                             state = rearrangement.improve(document, settings, std::move(state), attemptPenalty, searchStop, &localStats);
@@ -555,7 +573,9 @@ LayoutState MultiStartSolver::solve(
                 callback({SolverPhase::GapFilling, 0.86, best, best, elapsedSeconds(started), aggregateStats});
             }
             GapFilling gapFilling;
-            LayoutState gapFilled = gapFilling.fillGaps(document, settings, best, globalPenalty, stopRequested, &aggregateStats);
+            SmallPartFiller smallPartFiller;
+            LayoutState gapFilled = smallPartFiller.fill(document, settings, best, globalPenalty, stopRequested, &aggregateStats);
+            gapFilled = gapFilling.fillGaps(document, settings, std::move(gapFilled), globalPenalty, stopRequested, &aggregateStats);
             if (gapFilled.valid() && gapFilled.totalScore + 1e-9 < best.totalScore) {
                 best = std::move(gapFilled);
                 ++aggregateStats.bestUpdates;
@@ -572,7 +592,11 @@ LayoutState MultiStartSolver::solve(
             if (escaped.valid() && posesDiffer(escaped.poses, best.poses)) {
                 GapFilling gapFilling;
                 Rearrangement rearrangement;
-                LayoutState escapedOptimized = gapFilling.fillGaps(document, settings, std::move(escaped), globalPenalty, stopRequested, &aggregateStats);
+                SmallPartFiller smallPartFiller;
+                RegionRepack regionRepack;
+                LayoutState escapedOptimized = smallPartFiller.fill(document, settings, std::move(escaped), globalPenalty, stopRequested, &aggregateStats);
+                escapedOptimized = gapFilling.fillGaps(document, settings, std::move(escapedOptimized), globalPenalty, stopRequested, &aggregateStats);
+                escapedOptimized = regionRepack.improve(document, settings, std::move(escapedOptimized), globalPenalty, stopRequested, &aggregateStats);
                 escapedOptimized = rearrangement.improve(document, settings, std::move(escapedOptimized), globalPenalty, stopRequested, &aggregateStats);
                 if (escapedOptimized.valid() && escapedOptimized.totalScore + 1e-9 < best.totalScore) {
                     best = std::move(escapedOptimized);
@@ -584,7 +608,9 @@ LayoutState MultiStartSolver::solve(
                 callback({SolverPhase::Rearrangement, 0.87, best, best, elapsedSeconds(started), aggregateStats});
             }
             Rearrangement rearrangement;
-            LayoutState rearranged = rearrangement.improve(document, settings, best, globalPenalty, stopRequested, &aggregateStats);
+            RegionRepack regionRepack;
+            LayoutState rearranged = regionRepack.improve(document, settings, best, globalPenalty, stopRequested, &aggregateStats);
+            rearranged = rearrangement.improve(document, settings, std::move(rearranged), globalPenalty, stopRequested, &aggregateStats);
             if (rearranged.valid() && rearranged.totalScore + 1e-9 < best.totalScore) {
                 best = std::move(rearranged);
                 ++aggregateStats.bestUpdates;
