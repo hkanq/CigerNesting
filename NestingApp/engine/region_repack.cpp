@@ -113,7 +113,7 @@ std::vector<size_t> affectedParts(const Document& document, const LayoutState& s
     return out;
 }
 
-void classifyRejected(const DeltaEvaluation& evaluation, SolverStats* stats) {
+void classifyRejected(const MultiDeltaEvaluation& evaluation, SolverStats* stats) {
     if (!stats) {
         return;
     }
@@ -176,6 +176,74 @@ LayoutState RegionRepack::improve(
     LayoutEvalCache cache;
     cache.rebuild(document, settings, state, &penalties);
 
+    const size_t pairPartLimit = settings.performanceProfile == PerformanceProfile::Maximum ? 12u :
+        settings.performanceProfile == PerformanceProfile::Balanced ? 8u : 4u;
+    const size_t pairFrontierLimit = settings.performanceProfile == PerformanceProfile::Maximum ? 28u :
+        settings.performanceProfile == PerformanceProfile::Balanced ? 18u : 8u;
+    const size_t pairBudget = settings.performanceProfile == PerformanceProfile::Maximum ? 900u :
+        settings.performanceProfile == PerformanceProfile::Balanced ? 320u : 80u;
+    size_t pairEvaluations = 0;
+    for (size_t ai = 0; ai < parts.size() && ai < pairPartLimit && !stopRequested.load(); ++ai) {
+        for (size_t bi = ai + 1; bi < parts.size() && bi < pairPartLimit && !stopRequested.load(); ++bi) {
+            const size_t a = parts[ai];
+            const size_t b = parts[bi];
+            if (a >= document.parts.size() || b >= document.parts.size()) {
+                continue;
+            }
+            for (size_t fi = 0; fi < frontiers.size() && fi < pairFrontierLimit && pairEvaluations < pairBudget; ++fi) {
+                const FrontierCandidate& frontier = frontiers[fi];
+                if (!frontier.featureBounds.isValid()) {
+                    continue;
+                }
+                const AABB boundsA = transformedBounds(document.parts[a], state.poses[a]);
+                const AABB boundsB = transformedBounds(document.parts[b], state.poses[b]);
+                const Vec2 anchorA = frontier.featureBounds.min;
+                Vec2 anchorB{frontier.featureBounds.min.x + boundsA.width() + settings.partSpacing, frontier.featureBounds.min.y};
+                if (anchorB.x + boundsB.width() > frontier.featureBounds.max.x) {
+                    anchorB = {frontier.featureBounds.min.x, frontier.featureBounds.min.y + boundsA.height() + settings.partSpacing};
+                }
+                Pose poseA = poseWithMinAt(document.parts[a], state.poses[a], anchorA);
+                Pose poseB = poseWithMinAt(document.parts[b], state.poses[b], anchorB);
+                if (samePose(poseA, state.poses[a]) && samePose(poseB, state.poses[b])) {
+                    continue;
+                }
+
+                MultiDeltaMove move;
+                move.partIndices = {a, b};
+                move.oldPoses = {state.poses[a], state.poses[b]};
+                move.newPoses = {poseA, poseB};
+                const MultiDeltaEvaluation trial = evaluateMultiMoveDelta(document, settings, state, cache, move);
+                ++pairEvaluations;
+                ++evaluations;
+                if (stats) {
+                    ++stats->evaluatedCandidates;
+                }
+                if (!trial.valid) {
+                    classifyRejected(trial, stats);
+                    continue;
+                }
+                if (trial.totalScore + 1e-9 >= state.totalScore) {
+                    continue;
+                }
+
+                std::vector<Pose> verifiedPoses = state.poses;
+                verifiedPoses[a] = poseA;
+                verifiedPoses[b] = poseB;
+                LayoutState verified = scorer.evaluate(document, settings, verifiedPoses, &penalties);
+                if (verified.valid() && verified.totalScore + 1e-9 < state.totalScore) {
+                    state = std::move(verified);
+                    cache.updateAfterAcceptedMultiMove(document, settings, state, move, &penalties);
+                    if (stats) {
+                        ++stats->acceptedMoves;
+                        ++stats->bestUpdates;
+                        ++stats->regionRepackAccepted;
+                    }
+                    return state;
+                }
+            }
+        }
+    }
+
     for (size_t partIndex : parts) {
         if (stopRequested.load() || evaluations >= maxEvaluations || partIndex >= document.parts.size()) {
             break;
@@ -199,8 +267,11 @@ LayoutState RegionRepack::improve(
                 if (samePose(candidate, base)) {
                     continue;
                 }
-                const DeltaMove move{partIndex, base, candidate};
-                const DeltaEvaluation trial = evaluateMoveDelta(document, settings, state, cache, move);
+                MultiDeltaMove move;
+                move.partIndices.push_back(partIndex);
+                move.oldPoses.push_back(base);
+                move.newPoses.push_back(candidate);
+                const MultiDeltaEvaluation trial = evaluateMultiMoveDelta(document, settings, state, cache, move);
                 ++evaluations;
                 if (stats) {
                     ++stats->evaluatedCandidates;
@@ -226,9 +297,12 @@ LayoutState RegionRepack::improve(
         verifiedPoses[partIndex] = bestPose;
         LayoutState verified = scorer.evaluate(document, settings, verifiedPoses, &penalties);
         if (verified.valid() && verified.totalScore + 1e-9 < state.totalScore) {
-            const DeltaMove accepted{partIndex, state.poses[partIndex], bestPose};
+            MultiDeltaMove accepted;
+            accepted.partIndices.push_back(partIndex);
+            accepted.oldPoses.push_back(state.poses[partIndex]);
+            accepted.newPoses.push_back(bestPose);
             state = std::move(verified);
-            cache.updateAfterAcceptedMove(document, settings, state, accepted, &penalties);
+            cache.updateAfterAcceptedMultiMove(document, settings, state, accepted, &penalties);
             if (stats) {
                 ++stats->acceptedMoves;
                 ++stats->bestUpdates;

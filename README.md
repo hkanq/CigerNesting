@@ -156,6 +156,7 @@ The solver is no longer limited to a single demo row placement pass. `NestingEng
 - `UltraRefinement` refines the best layout locally with angle ladders, micro-translation correction, optional mirroring, and strict contour validation
 - `SolverStats` reports evaluated candidates, accepted moves, worse accepted/rejected moves, tabu rejections, escape use, worker count, cache hits, compaction/frontier/filler/repack counts, swap/chain/cluster move counts, elapsed time, and candidates/second
 - `LayoutEvalCache` supports incremental delta scoring for single-part candidate moves, avoiding full layout rescoring for every rejected candidate
+- `LayoutEvalCache` also supports bounded multi-part delta scoring for swap, chain, cluster, and region-repack style moves
 
 Solver quality smoke test target:
 
@@ -179,6 +180,12 @@ Delta scoring smoke target:
 
 ```powershell
 build\NestingApp\Release\CigerNestingDeltaScoreSmoke.exe
+```
+
+Multi-part delta scoring smoke target:
+
+```powershell
+build\NestingApp\Release\CigerNestingMultiDeltaSmoke.exe
 ```
 
 Gap filling smoke target:
@@ -212,6 +219,17 @@ The stress smoke generates 100, 250, and 500-part synthetic documents and report
 - used bounds, with full used-bounds recompute only when the moved part touched the previous used-layout boundary
 
 Guided local search, score compression, ultra refinement, and performance stress candidate checks use delta scoring first. Accepted candidates are still verified with full `LayoutScore` before becoming the new state, so validity rules are not relaxed.
+
+For coupled moves, `evaluateMultiMoveDelta` accepts a `MultiDeltaMove` containing multiple part indices and new poses. It builds an affected set from:
+
+- moved parts
+- old cached neighbors
+- new spatial-grid neighbors
+- moved-to-moved pairs
+
+Only pair contributions involving moved parts are removed and recalculated. Unaffected pair, ring, transformed-part, and sheet contributions stay cached. Accepted multi-part moves update only moved transformed parts, sheet validity, spatial-grid cells, and affected pair entries. Used bounds are updated incrementally unless one moved part touched the previous used-boundary, in which case the used bounds are recomputed safely.
+
+Pair cache entries store collision contribution, spacing contribution, clearance validity, and last boundary distance. Exact clearance is skipped for obviously far AABB-separated pairs; near pairs still run exact contour clearance. Every accepted delta candidate is still verified by full `LayoutScore`, and delta/full score mismatches fall back to the full score result.
 
 ## Gap Filling
 
@@ -364,8 +382,8 @@ Each accepted refinement must improve score and remain valid: no part collision,
 - Direct2D, GPU evaluation, AI import, and Corel macro installation are intentionally not implemented yet.
 - The solver is now collision-driven v1 with parallel multi-start, but contact candidates are still geometric heuristics rather than a full NFP engine.
 - Gap filling is hole-aware and concavity-aware, but concavity detection is currently based on local reflex vertices rather than a full medial-axis/free-space decomposition.
-- Rearrangement uses bounded swap/ejection/cluster heuristics. It is not yet a full combinatorial optimizer and does not yet do multi-part delta scoring.
+- Rearrangement uses bounded swap/ejection/cluster heuristics with multi-part delta pre-evaluation. It is not yet a full combinatorial optimizer.
 - Adaptive search currently applies annealing to single-part delta moves; multi-part adaptive acceptance still uses full-score safety checks and bounded escape heuristics.
 - Performance stress smoke is bounded and deterministic; it is not a substitute for long industrial benchmark runs.
 - Benchmark runner uses deterministic single-thread settings, so its `candidatesPerSecond` is for regression comparison rather than peak CPU throughput.
-- Delta scoring currently optimizes single-part moves; multi-part coupled moves still need full verification/future delta extensions.
+- Multi-part delta scoring is active for bounded coupled moves, but accepted moves still require full verification. Future work can extend the same cache model to deeper chain planning and GPU candidate evaluation.

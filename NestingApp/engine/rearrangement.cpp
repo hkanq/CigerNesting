@@ -1,6 +1,7 @@
 #include "engine/rearrangement.h"
 
 #include "engine/free_space_analyzer.h"
+#include "engine/layout_eval_cache.h"
 #include "engine/layout_score.h"
 #include "geometry/clearance.h"
 #include "geometry/collision.h"
@@ -119,15 +120,65 @@ std::vector<size_t> conflictingParts(
     return conflicts;
 }
 
-bool tryAccept(
+MultiDeltaMove buildMultiMove(const LayoutState& state, const std::vector<Pose>& poses) {
+    MultiDeltaMove move;
+    const size_t count = std::min(state.poses.size(), poses.size());
+    for (size_t i = 0; i < count; ++i) {
+        if (std::abs(state.poses[i].x - poses[i].x) > 1e-9 ||
+            std::abs(state.poses[i].y - poses[i].y) > 1e-9 ||
+            std::abs(state.poses[i].angleRadians - poses[i].angleRadians) > 1e-9 ||
+            state.poses[i].mirrored != poses[i].mirrored) {
+            move.partIndices.push_back(i);
+            move.oldPoses.push_back(state.poses[i]);
+            move.newPoses.push_back(poses[i]);
+        }
+    }
+    return move;
+}
+
+void classifyRejected(const MultiDeltaEvaluation& evaluation, SolverStats* stats) {
+    if (!stats) {
+        return;
+    }
+    if (evaluation.collisionCount > 0) {
+        ++stats->rejectedCollision;
+    } else if (evaluation.spacingPenalty > 0.0) {
+        ++stats->rejectedSpacing;
+    } else if (evaluation.invalidPartCount > 0 || evaluation.sheetPenalty > 0.0) {
+        ++stats->rejectedSheet;
+    }
+}
+
+bool tryAcceptMulti(
     const Document& document,
     const EngineSettings& settings,
     const PenaltySystem& penalties,
+    LayoutEvalCache& cache,
     LayoutState& state,
-    const std::vector<Pose>& poses) {
+    const std::vector<Pose>& poses,
+    SolverStats* stats) {
+    MultiDeltaMove move = buildMultiMove(state, poses);
+    if (move.partIndices.empty()) {
+        return false;
+    }
+    MultiDeltaEvaluation delta = evaluateMultiMoveDelta(document, settings, state, cache, move);
+    if (stats) {
+        ++stats->evaluatedCandidates;
+        ++stats->cacheHits;
+    }
+    if (!delta.valid || delta.totalScore + 1e-9 >= state.totalScore) {
+        classifyRejected(delta, stats);
+        return false;
+    }
+
     LayoutState trial = LayoutScore{}.evaluate(document, settings, poses, &penalties);
+    const double tolerance = std::max(1.0, std::abs(trial.totalScore)) * 1e-4;
+    if (std::abs(trial.totalScore - delta.totalScore) > tolerance && stats) {
+        ++stats->cacheMisses;
+    }
     if (trial.valid() && trial.totalScore + 1e-9 < state.totalScore) {
         state = std::move(trial);
+        cache.updateAfterAcceptedMultiMove(document, settings, state, move, &penalties);
         return true;
     }
     return false;
@@ -177,6 +228,7 @@ bool trySwapMoves(
     const Document& document,
     const EngineSettings& settings,
     const PenaltySystem& penalties,
+    LayoutEvalCache& cache,
     LayoutState& state,
     const std::atomic_bool& stopRequested,
     SolverStats* stats) {
@@ -215,7 +267,7 @@ bool trySwapMoves(
                 std::vector<Pose> poses = state.poses;
                 poses[a] = variant.first;
                 poses[b] = variant.second;
-                if (tryAccept(document, settings, penalties, state, poses)) {
+                if (tryAcceptMulti(document, settings, penalties, cache, state, poses, stats)) {
                     if (stats) {
                         ++stats->swapAccepted;
                         ++stats->acceptedMoves;
@@ -288,6 +340,7 @@ bool tryEjectionChains(
     const Document& document,
     const EngineSettings& settings,
     const PenaltySystem& penalties,
+    LayoutEvalCache& cache,
     LayoutState& state,
     const std::atomic_bool& stopRequested,
     SolverStats* stats) {
@@ -350,7 +403,7 @@ bool tryEjectionChains(
             if (!relocated) {
                 continue;
             }
-            if (tryAccept(document, settings, penalties, state, trialPoses)) {
+            if (tryAcceptMulti(document, settings, penalties, cache, state, trialPoses, stats)) {
                 if (stats) {
                     ++stats->chainAccepted;
                     ++stats->acceptedMoves;
@@ -437,6 +490,7 @@ bool tryClusterCompaction(
     const Document& document,
     const EngineSettings& settings,
     const PenaltySystem& penalties,
+    LayoutEvalCache& cache,
     LayoutState& state,
     const std::atomic_bool& stopRequested,
     SolverStats* stats) {
@@ -474,7 +528,7 @@ bool tryClusterCompaction(
                         poses[index].y += direction.y * step;
                     }
                 }
-                if (tryAccept(document, settings, penalties, state, poses)) {
+                if (tryAcceptMulti(document, settings, penalties, cache, state, poses, stats)) {
                     if (stats) {
                         ++stats->clusterAccepted;
                         ++stats->acceptedMoves;
@@ -520,7 +574,7 @@ bool tryClusterCompaction(
                         }
                     }
                 }
-                if (anyShrunk && tryAccept(document, settings, penalties, state, shrinkPoses)) {
+                if (anyShrunk && tryAcceptMulti(document, settings, penalties, cache, state, shrinkPoses, stats)) {
                     if (stats) {
                         ++stats->clusterAccepted;
                         ++stats->acceptedMoves;
@@ -565,14 +619,17 @@ LayoutState Rearrangement::improve(
         return state;
     }
 
+    LayoutEvalCache cache;
+    cache.rebuild(document, settings, state, &penalties);
+
     for (int pass = 0; pass < passCount(settings.performanceProfile) && !stopRequested.load(); ++pass) {
         bool changed = false;
-        changed = trySwapMoves(document, settings, penalties, state, stopRequested, stats) || changed;
+        changed = trySwapMoves(document, settings, penalties, cache, state, stopRequested, stats) || changed;
         if (!stopRequested.load()) {
-            changed = tryEjectionChains(document, settings, penalties, state, stopRequested, stats) || changed;
+            changed = tryEjectionChains(document, settings, penalties, cache, state, stopRequested, stats) || changed;
         }
         if (!stopRequested.load()) {
-            changed = tryClusterCompaction(document, settings, penalties, state, stopRequested, stats) || changed;
+            changed = tryClusterCompaction(document, settings, penalties, cache, state, stopRequested, stats) || changed;
         }
         if (!changed) {
             break;

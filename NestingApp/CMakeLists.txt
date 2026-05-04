@@ -139,6 +139,19 @@ add_executable(CigerNestingDeltaScoreSmoke
     engine/pose_sampler.cpp
 )
 
+add_executable(CigerNestingMultiDeltaSmoke
+    tests/multi_delta_smoke.cpp
+    geometry/clearance.cpp
+    geometry/collision.cpp
+    geometry/spatial_grid.cpp
+    geometry/transformed_shape.cpp
+    engine/broadphase.cpp
+    engine/layout_eval_cache.cpp
+    engine/layout_score.cpp
+    engine/layout_score_components.cpp
+    engine/penalty_system.cpp
+)
+
 add_executable(CigerNestingGapFillingSmoke
     tests/gap_filling_smoke.cpp
     geometry/clearance.cpp
@@ -287,6 +300,8 @@ target_include_directories(CigerNestingPerformanceStressSmoke PRIVATE "${CMAKE_C
 target_compile_definitions(CigerNestingPerformanceStressSmoke PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
 target_include_directories(CigerNestingDeltaScoreSmoke PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_definitions(CigerNestingDeltaScoreSmoke PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
+target_include_directories(CigerNestingMultiDeltaSmoke PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_definitions(CigerNestingMultiDeltaSmoke PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
 target_include_directories(CigerNestingGapFillingSmoke PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_definitions(CigerNestingGapFillingSmoke PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
 target_include_directories(CigerNestingRearrangementSmoke PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
@@ -306,6 +321,7 @@ if(MSVC)
     target_compile_options(CigerNestingClearanceSmoke PRIVATE /W4 /permissive- /EHsc /utf-8)
     target_compile_options(CigerNestingPerformanceStressSmoke PRIVATE /W4 /permissive- /EHsc /utf-8)
     target_compile_options(CigerNestingDeltaScoreSmoke PRIVATE /W4 /permissive- /EHsc /utf-8)
+    target_compile_options(CigerNestingMultiDeltaSmoke PRIVATE /W4 /permissive- /EHsc /utf-8)
     target_compile_options(CigerNestingGapFillingSmoke PRIVATE /W4 /permissive- /EHsc /utf-8)
     target_compile_options(CigerNestingRearrangementSmoke PRIVATE /W4 /permissive- /EHsc /utf-8)
     target_compile_options(CigerNestingEscapeSmoke PRIVATE /W4 /permissive- /EHsc /utf-8)
@@ -319,6 +335,7 @@ else()
     target_compile_options(CigerNestingClearanceSmoke PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_options(CigerNestingPerformanceStressSmoke PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_options(CigerNestingDeltaScoreSmoke PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(CigerNestingMultiDeltaSmoke PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_options(CigerNestingGapFillingSmoke PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_options(CigerNestingRearrangementSmoke PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_options(CigerNestingEscapeSmoke PRIVATE -Wall -Wextra -Wpedantic)

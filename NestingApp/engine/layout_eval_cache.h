@@ -28,10 +28,32 @@ struct DeltaEvaluation {
     double usedHeight = 0.0;
 };
 
+struct MultiDeltaMove {
+    std::vector<size_t> partIndices;
+    std::vector<Pose> oldPoses;
+    std::vector<Pose> newPoses;
+};
+
+struct MultiDeltaEvaluation {
+    bool valid = false;
+    double totalScore = 0.0;
+    int collisionCount = 0;
+    int invalidPartCount = 0;
+    double spacingPenalty = 0.0;
+    double sheetPenalty = 0.0;
+    double usedWidth = 0.0;
+    double usedHeight = 0.0;
+    size_t affectedPartCount = 0;
+    size_t affectedPairCount = 0;
+};
+
 struct PairScoreContribution {
     int collisionCount = 0;
     double overlapPenalty = 0.0;
     double spacingPenalty = 0.0;
+    bool clearanceValid = true;
+    double clearanceDistance = 0.0;
+    bool exactClearanceEvaluated = false;
 };
 
 struct SheetScoreContribution {
@@ -54,6 +76,15 @@ public:
         const EngineSettings& settings,
         const LayoutState& state,
         const DeltaMove& move,
+        const PenaltySystem* attemptPenalties = nullptr,
+        const PenaltySystem* globalPenalties = nullptr,
+        double globalPenaltyWeight = 0.10);
+
+    void updateAfterAcceptedMultiMove(
+        const Document& document,
+        const EngineSettings& settings,
+        const LayoutState& state,
+        const MultiDeltaMove& move,
         const PenaltySystem* attemptPenalties = nullptr,
         const PenaltySystem* globalPenalties = nullptr,
         double globalPenaltyWeight = 0.10);
@@ -111,6 +142,9 @@ private:
     static PairKey makePairKey(size_t a, size_t b);
     void rebuildSpatialIndex(double spacing);
     void insertBounds(size_t index, const AABB& bounds);
+    void removeBounds(size_t index);
+    void erasePairContribution(size_t a, size_t b);
+    void storePairContribution(size_t a, size_t b, const PairScoreContribution& contribution);
 
     std::vector<TransformedPart> transformedParts_;
     std::vector<AABB> partBounds_;
@@ -118,6 +152,7 @@ private:
     std::vector<std::vector<size_t>> pairsByPart_;
     std::unordered_map<PairKey, PairScoreContribution, PairKeyHash> pairContributions_;
     std::unordered_map<CellKey, std::vector<size_t>, CellKeyHash> grid_;
+    std::vector<std::vector<CellKey>> cellsByPart_;
     AABB usedBounds_;
     double pairOverlapPenalty_ = 0.0;
     double spacingPenalty_ = 0.0;
@@ -136,5 +171,12 @@ DeltaEvaluation evaluateMoveDelta(
     const LayoutState& current,
     const LayoutEvalCache& cache,
     const DeltaMove& move);
+
+MultiDeltaEvaluation evaluateMultiMoveDelta(
+    const Document& document,
+    const EngineSettings& settings,
+    const LayoutState& current,
+    LayoutEvalCache& cache,
+    const MultiDeltaMove& move);
 
 } // namespace nest
