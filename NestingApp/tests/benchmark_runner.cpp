@@ -67,10 +67,24 @@ struct BenchmarkRow {
     size_t frontierCandidates = 0;
     size_t smallFillerAccepted = 0;
     size_t regionRepackAccepted = 0;
+    double emptySpaceArea = 0.0;
+    double largestEmptyRegionArea = 0.0;
+    size_t fillableGapCount = 0;
+    size_t contactCount = 0;
+    double averageClearance = 0.0;
+    size_t slideToContactAccepted = 0;
+    size_t aggressiveGapAccepted = 0;
+    size_t localRegionRepackAccepted = 0;
+    size_t localRegionRepackSubsets = 0;
+    double towerScore = 0.0;
+    double layoutSpreadScore = 0.0;
+    double unusedSheetRegionScore = 0.0;
+    size_t lowContactPartCount = 0;
     double finalScore = 0.0;
     bool qualityPass = false;
     bool profilePass = false;
     std::string failureReason;
+    std::string qualityFailReason;
 };
 
 const char* profileName(PerformanceProfile profile) {
@@ -84,6 +98,34 @@ const char* profileName(PerformanceProfile profile) {
     default:
         return "Unknown";
     }
+}
+
+double requiredMaximumUtilization(const std::string& caseName) {
+    if (caseName == "mixed_500_parts") {
+        return 0.65;
+    }
+    if (caseName == "mixed_100_parts") {
+        return 0.72;
+    }
+    if (caseName == "many_small_parts") {
+        return 0.65;
+    }
+    return 0.0;
+}
+
+const char* statusText(const BenchmarkRow& row) {
+    if (row.profilePass) {
+        return "PASS";
+    }
+    if (row.qualityPass && !row.qualityFailReason.empty()) {
+        return "QUALITY_FAIL";
+    }
+    return "FAIL";
+}
+
+std::string csvSafe(std::string value) {
+    std::replace(value.begin(), value.end(), ',', ';');
+    return value;
 }
 
 std::string profileFileName(PerformanceProfile profile) {
@@ -465,7 +507,20 @@ void writeJsonOutput(
     out << "    \"compactionAccepted\": " << stats.compactionAccepted << ",\n";
     out << "    \"frontierCandidates\": " << stats.frontierCandidates << ",\n";
     out << "    \"smallFillerAccepted\": " << stats.smallFillerAccepted << ",\n";
-    out << "    \"regionRepackAccepted\": " << stats.regionRepackAccepted << "\n";
+    out << "    \"regionRepackAccepted\": " << stats.regionRepackAccepted << ",\n";
+    out << "    \"emptySpaceArea\": " << stats.emptySpaceArea << ",\n";
+    out << "    \"largestEmptyRegionArea\": " << stats.largestEmptyRegionArea << ",\n";
+    out << "    \"fillableGapCount\": " << stats.fillableGapCount << ",\n";
+    out << "    \"contactCount\": " << stats.contactCount << ",\n";
+    out << "    \"averageClearance\": " << stats.averageClearance << ",\n";
+    out << "    \"slideToContactAccepted\": " << stats.slideToContactAccepted << ",\n";
+    out << "    \"aggressiveGapAccepted\": " << stats.aggressiveGapAccepted << ",\n";
+    out << "    \"localRegionRepackAccepted\": " << stats.localRegionRepackAccepted << ",\n";
+    out << "    \"localRegionRepackSubsets\": " << stats.localRegionRepackSubsets << ",\n";
+    out << "    \"towerScore\": " << stats.towerScore << ",\n";
+    out << "    \"layoutSpreadScore\": " << stats.layoutSpreadScore << ",\n";
+    out << "    \"unusedSheetRegionScore\": " << stats.unusedSheetRegionScore << ",\n";
+    out << "    \"lowContactPartCount\": " << stats.lowContactPartCount << "\n";
     out << "  }\n";
     out << "}\n";
 }
@@ -531,6 +586,19 @@ BenchmarkRow runBenchmark(
     row.frontierCandidates = stats.frontierCandidates;
     row.smallFillerAccepted = stats.smallFillerAccepted;
     row.regionRepackAccepted = stats.regionRepackAccepted;
+    row.emptySpaceArea = stats.emptySpaceArea;
+    row.largestEmptyRegionArea = stats.largestEmptyRegionArea;
+    row.fillableGapCount = stats.fillableGapCount;
+    row.contactCount = stats.contactCount;
+    row.averageClearance = stats.averageClearance;
+    row.slideToContactAccepted = stats.slideToContactAccepted;
+    row.aggressiveGapAccepted = stats.aggressiveGapAccepted;
+    row.localRegionRepackAccepted = stats.localRegionRepackAccepted;
+    row.localRegionRepackSubsets = stats.localRegionRepackSubsets;
+    row.towerScore = stats.towerScore;
+    row.layoutSpreadScore = stats.layoutSpreadScore;
+    row.unusedSheetRegionScore = stats.unusedSheetRegionScore;
+    row.lowContactPartCount = stats.lowContactPartCount;
     row.finalScore = solved.totalScore;
     row.qualityPass = solved.collisionCount == 0 &&
         solved.invalidPartCount == 0 &&
@@ -539,6 +607,17 @@ BenchmarkRow runBenchmark(
     row.profilePass = row.qualityPass;
     if (!row.qualityPass) {
         row.failureReason = "quality rule failed";
+    }
+    if (row.qualityPass && profile == PerformanceProfile::Maximum) {
+        const double requiredUtilization = requiredMaximumUtilization(row.caseName);
+        if (requiredUtilization > 0.0 && row.utilization + 1e-9 < requiredUtilization) {
+            std::ostringstream reason;
+            reason << "QUALITY_FAIL utilization " << std::fixed << std::setprecision(4)
+                   << row.utilization << " < " << requiredUtilization;
+            row.qualityFailReason = reason.str();
+            row.failureReason = row.qualityFailReason;
+            row.profilePass = false;
+        }
     }
 
     const std::string outputStem = benchmarkCase.name + "_" + profileFileName(profile);
@@ -552,7 +631,7 @@ void writeCsv(const std::filesystem::path& csvPath, const std::vector<BenchmarkR
     if (!csv) {
         return;
     }
-    csv << "caseName,partCount,profile,elapsedMs,utilization,usedWidth,usedHeight,collisions,invalid,spacingPenalty,sheetPenalty,bestUpdates,evaluatedCandidates,candidatesPerSecond,acceptedMoves,acceptedWorseMoves,gapAccepted,swapAccepted,chainAccepted,escapeAccepted,ultraAccepted,compactionAccepted,frontierCandidates,smallFillerAccepted,regionRepackAccepted,finalScore,status\n";
+    csv << "caseName,partCount,profile,elapsedMs,utilization,usedWidth,usedHeight,collisions,invalid,spacingPenalty,sheetPenalty,bestUpdates,evaluatedCandidates,candidatesPerSecond,acceptedMoves,acceptedWorseMoves,gapAccepted,swapAccepted,chainAccepted,escapeAccepted,ultraAccepted,compactionAccepted,frontierCandidates,smallFillerAccepted,regionRepackAccepted,emptySpaceArea,largestEmptyRegionArea,fillableGapCount,contactCount,averageClearance,slideToContactAccepted,aggressiveGapAccepted,localRegionRepackAccepted,localRegionRepackSubsets,towerScore,layoutSpreadScore,unusedSheetRegionScore,lowContactPartCount,finalScore,status,qualityFailReason\n";
     csv << std::fixed << std::setprecision(6);
     for (const BenchmarkRow& row : rows) {
         csv << row.caseName << ','
@@ -580,13 +659,27 @@ void writeCsv(const std::filesystem::path& csvPath, const std::vector<BenchmarkR
             << row.frontierCandidates << ','
             << row.smallFillerAccepted << ','
             << row.regionRepackAccepted << ','
+            << row.emptySpaceArea << ','
+            << row.largestEmptyRegionArea << ','
+            << row.fillableGapCount << ','
+            << row.contactCount << ','
+            << row.averageClearance << ','
+            << row.slideToContactAccepted << ','
+            << row.aggressiveGapAccepted << ','
+            << row.localRegionRepackAccepted << ','
+            << row.localRegionRepackSubsets << ','
+            << row.towerScore << ','
+            << row.layoutSpreadScore << ','
+            << row.unusedSheetRegionScore << ','
+            << row.lowContactPartCount << ','
             << row.finalScore << ','
-            << (row.profilePass ? "PASS" : "FAIL") << '\n';
+            << statusText(row) << ','
+            << csvSafe(row.qualityFailReason.empty() ? row.failureReason : row.qualityFailReason) << '\n';
     }
 }
 
 void printHumanRow(const BenchmarkRow& row) {
-    std::cout << (row.profilePass ? "PASS" : "FAIL")
+    std::cout << statusText(row)
         << " case=" << row.caseName
         << " profile=" << profileName(row.profile)
         << " parts=" << row.partCount
@@ -598,6 +691,15 @@ void printHumanRow(const BenchmarkRow& row) {
         << " spacingPenalty=" << std::setprecision(6) << row.spacingPenalty
         << " sheetPenalty=" << row.sheetPenalty
         << " bestUpdates=" << row.bestUpdates
+        << " emptySpace=" << std::setprecision(2) << row.emptySpaceArea
+        << " largestGap=" << row.largestEmptyRegionArea
+        << " fillableGaps=" << row.fillableGapCount
+        << " contacts=" << row.contactCount
+        << " tower=" << std::setprecision(3) << row.towerScore
+        << " lowContact=" << row.lowContactPartCount
+        << " slideAccepted=" << row.slideToContactAccepted
+        << " aggressiveGapAccepted=" << row.aggressiveGapAccepted
+        << " localRegionRepackAccepted=" << row.localRegionRepackAccepted
         << " cps=" << std::setprecision(1) << row.candidatesPerSecond;
     if (!row.failureReason.empty()) {
         std::cout << " reason=" << row.failureReason;
@@ -658,9 +760,10 @@ bool applyQualityGoal(std::vector<BenchmarkRow>& rows, const std::string& caseNa
     BenchmarkRow* maximum = findRow(rows, caseName, PerformanceProfile::Maximum);
     if (maximum) {
         maximum->profilePass = false;
-        maximum->failureReason = message;
+        maximum->qualityFailReason = std::string("QUALITY_FAIL ") + message;
+        maximum->failureReason = maximum->qualityFailReason;
     }
-    std::cout << "FAIL quality_goal case=" << caseName << " rule=" << message << "\n";
+    std::cout << "QUALITY_FAIL quality_goal case=" << caseName << " rule=" << message << "\n";
     return false;
 }
 
@@ -710,7 +813,7 @@ int wmain(int argc, wchar_t** argv) {
                 fastScore = row.finalScore;
                 fastIndex = rows.size();
             }
-            if (profile == PerformanceProfile::Maximum && std::isfinite(fastScore) && !scoreNoWorse(row.finalScore, fastScore)) {
+            if (profile == PerformanceProfile::Maximum && row.profilePass && std::isfinite(fastScore) && !scoreNoWorse(row.finalScore, fastScore)) {
                 row.profilePass = false;
                 row.failureReason = "Maximum score worse than Fast";
             }
@@ -728,6 +831,7 @@ int wmain(int argc, wchar_t** argv) {
     if (manyFast && manyMaximum) {
         const double fastArea = manyFast->usedWidth * manyFast->usedHeight;
         const double maximumArea = manyMaximum->usedWidth * manyMaximum->usedHeight;
+        allPass = applyQualityGoal(rows, "many_small_parts", manyMaximum->utilization + 1e-9 >= 0.65, "Maximum utilization >= 0.65") && allPass;
         allPass = applyQualityGoal(rows, "many_small_parts", manyMaximum->bestUpdates > 1, "Maximum bestUpdates > 1") && allPass;
         allPass = applyQualityGoal(rows, "many_small_parts",
             manyMaximum->utilization > manyFast->utilization + 1e-6 || maximumArea + 1e-6 < fastArea,
@@ -736,11 +840,13 @@ int wmain(int argc, wchar_t** argv) {
 
     const BenchmarkRow* mixed100Maximum = findRow(rows, "mixed_100_parts", PerformanceProfile::Maximum);
     if (mixed100Maximum) {
+        allPass = applyQualityGoal(rows, "mixed_100_parts", mixed100Maximum->utilization + 1e-9 >= 0.72, "Maximum utilization >= 0.72") && allPass;
         allPass = applyQualityGoal(rows, "mixed_100_parts", mixed100Maximum->bestUpdates > 0, "Maximum bestUpdates > 0") && allPass;
     }
 
     const BenchmarkRow* mixed500Maximum = findRow(rows, "mixed_500_parts", PerformanceProfile::Maximum);
     if (mixed500Maximum) {
+        allPass = applyQualityGoal(rows, "mixed_500_parts", mixed500Maximum->utilization + 1e-9 >= 0.65, "Maximum utilization >= 0.65 short-term") && allPass;
         allPass = applyQualityGoal(rows, "mixed_500_parts", mixed500Maximum->bestUpdates > 0, "Maximum bestUpdates > 0") && allPass;
     }
 

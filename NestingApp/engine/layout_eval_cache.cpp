@@ -17,11 +17,11 @@ namespace {
 constexpr double kCollisionPenalty = 100000000.0;
 constexpr double kSheetPenalty = 100000000.0;
 constexpr double kSpacingPenalty = 1000000.0;
-constexpr double kUsedAreaPenalty = 1.0;
-constexpr double kUtilizationReward = 10000.0;
+constexpr double kUsedAreaPenalty = 2.40;
+constexpr double kUtilizationReward = 60000.0;
 constexpr double kCompactnessReward = 0.02;
 constexpr double kCavityReward = 500000.0;
-constexpr double kContactReward = 950.0;
+constexpr double kContactReward = 450.0;
 
 double clearanceDeficit(double required, double actual) {
     if (!std::isfinite(actual)) {
@@ -252,6 +252,7 @@ bool touchesUsedBoundary(const AABB& partBounds, const AABB& usedBounds, double 
 
 double totalScore(
     const Document& document,
+    const EngineSettings& settings,
     int collisionCount,
     double overlapPenalty,
     int invalidPartCount,
@@ -267,6 +268,8 @@ double totalScore(
     const double usedArea = std::max(1.0, usedBounds.area());
     const double utilization = std::max(0.0, std::min(1.0, document.totalPartArea() / usedArea));
     const double compactness = document.totalPartArea() / usedArea;
+    const LayoutShapeMetrics shapeMetrics = computeLayoutShapeMetrics(document, settings, usedBounds);
+    const double towerPenalty = shapeMetrics.towerScore * std::max(1.0, document.totalPartArea()) * 1.80;
     return
         static_cast<double>(collisionCount) * kCollisionPenalty +
         overlapPenalty * kCollisionPenalty * 0.00001 +
@@ -277,7 +280,8 @@ double totalScore(
         utilization * kUtilizationReward -
         compactness * kCompactnessReward -
         cavityReward * kCavityReward -
-        contactReward * kContactReward;
+        contactReward * kContactReward +
+        towerPenalty;
 }
 
 } // namespace
@@ -408,7 +412,10 @@ void LayoutEvalCache::rebuild(
     pairsByPart_.assign(count, {});
 
     BroadPhase broad;
-    const auto pairs = broad.findCandidatePairs(document.parts, state.poses, settings.partSpacing);
+    const double contactSearchDistance = settings.performanceProfile == PerformanceProfile::Fast
+        ? settings.partSpacing
+        : std::max(settings.partSpacing, 6.0);
+    const auto pairs = broad.findCandidatePairs(document.parts, state.poses, contactSearchDistance);
     for (const auto& [a, b] : pairs) {
         if (a >= count || b >= count) {
             continue;
@@ -645,7 +652,7 @@ DeltaEvaluation evaluateMoveDelta(
     std::vector<Pose> candidatePoses = current.poses;
     candidatePoses[move.partIndex] = move.newPose;
     const double cavityReward = cavityPlacementReward(document, candidatePoses);
-    evaluation.totalScore = totalScore(document, collisionCount, std::max(0.0, overlapPenalty), invalidPartCount, evaluation.sheetPenalty, evaluation.spacingPenalty, used, cavityReward, std::max(0.0, contactReward), evaluation.usedWidth, evaluation.usedHeight);
+    evaluation.totalScore = totalScore(document, settings, collisionCount, std::max(0.0, overlapPenalty), invalidPartCount, evaluation.sheetPenalty, evaluation.spacingPenalty, used, cavityReward, std::max(0.0, contactReward), evaluation.usedWidth, evaluation.usedHeight);
     evaluation.valid = collisionCount == 0 && invalidPartCount == 0 && evaluation.spacingPenalty <= 0.0 && evaluation.sheetPenalty <= 0.0;
     return evaluation;
 }
@@ -807,6 +814,7 @@ MultiDeltaEvaluation evaluateMultiMoveDelta(
     evaluation.affectedPairCount = pairSet.size();
     evaluation.totalScore = totalScore(
         document,
+        settings,
         evaluation.collisionCount,
         std::max(0.0, overlapPenalty),
         evaluation.invalidPartCount,

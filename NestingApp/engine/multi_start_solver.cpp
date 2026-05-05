@@ -1,12 +1,18 @@
 #include "engine/multi_start_solver.h"
 
+#include "core/math_utils.h"
 #include "engine/adaptive_optimizer.h"
+#include "engine/aggressive_gap_filler.h"
+#include "engine/broadphase.h"
 #include "engine/compression.h"
+#include "engine/empty_space_map.h"
 #include "engine/contact_packing.h"
 #include "engine/convergence.h"
 #include "engine/escape_search.h"
 #include "engine/gap_filling.h"
 #include "engine/layout_score.h"
+#include "engine/layout_score_components.h"
+#include "engine/local_region_repack.h"
 #include "engine/overlap_resolver.h"
 #include "engine/parallel_collision_evaluator.h"
 #include "engine/pose_sampler.h"
@@ -15,7 +21,11 @@
 #include "engine/small_part_filler.h"
 #include "engine/ultra_refinement.h"
 #include "engine/worker_pool.h"
+#include "geometry/clearance.h"
+#include "geometry/collision.h"
+#include "geometry/transformed_shape.h"
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <future>
@@ -131,7 +141,7 @@ Pose poseFromCenterAnchor(const PlacementChoice& choice, Vec2 anchor) {
     return pose;
 }
 
-double clamp(double value, double minValue, double maxValue) {
+double clampLocal(double value, double minValue, double maxValue) {
     return std::max(minValue, std::min(value, maxValue));
 }
 
@@ -144,8 +154,8 @@ Vec2 centerOutAnchor(size_t placed, double partSpan, const EngineSettings& setti
     const double radius = std::sqrt(static_cast<double>(placed)) * (partSpan + settings.partSpacing) * 0.85;
     const double angle = static_cast<double>(placed) * goldenAngle;
     return {
-        clamp(center.x + std::cos(angle) * radius, settings.margin, settings.sheetWidth - settings.margin),
-        clamp(center.y + std::sin(angle) * radius, settings.margin, settings.sheetHeight - settings.margin)
+        clampLocal(center.x + std::cos(angle) * radius, settings.margin, settings.sheetWidth - settings.margin),
+        clampLocal(center.y + std::sin(angle) * radius, settings.margin, settings.sheetHeight - settings.margin)
     };
 }
 
@@ -238,12 +248,122 @@ void mergeStats(SolverStats& target, const SolverStats& source) {
     target.frontierCandidates += source.frontierCandidates;
     target.smallFillerAccepted += source.smallFillerAccepted;
     target.regionRepackAccepted += source.regionRepackAccepted;
+    target.emptySpaceArea = std::max(target.emptySpaceArea, source.emptySpaceArea);
+    target.largestEmptyRegionArea = std::max(target.largestEmptyRegionArea, source.largestEmptyRegionArea);
+    target.fillableGapCount = std::max(target.fillableGapCount, source.fillableGapCount);
+    target.contactCount = std::max(target.contactCount, source.contactCount);
+    target.averageClearance = std::max(target.averageClearance, source.averageClearance);
+    target.slideToContactAccepted += source.slideToContactAccepted;
+    target.aggressiveGapAccepted += source.aggressiveGapAccepted;
+    target.localRegionRepackAttempts += source.localRegionRepackAttempts;
+    target.localRegionRepackAccepted += source.localRegionRepackAccepted;
+    target.localRegionRepackSubsets += source.localRegionRepackSubsets;
+    target.localRegionRepackCandidatesGenerated += source.localRegionRepackCandidatesGenerated;
+    target.localRegionRepackValidCandidates += source.localRegionRepackValidCandidates;
+    target.localRegionRepackNoCandidate += source.localRegionRepackNoCandidate;
+    target.localRegionRepackCollisionReject += source.localRegionRepackCollisionReject;
+    target.localRegionRepackClearanceReject += source.localRegionRepackClearanceReject;
+    target.localRegionRepackSheetReject += source.localRegionRepackSheetReject;
+    target.localRegionRepackScoreReject += source.localRegionRepackScoreReject;
+    target.localRegionRepackBeamPruned += source.localRegionRepackBeamPruned;
+    target.localRegionRepackFullValidationReject += source.localRegionRepackFullValidationReject;
+    target.localRegionRepackMaxCandidatesForPart = std::max(target.localRegionRepackMaxCandidatesForPart, source.localRegionRepackMaxCandidatesForPart);
+    target.towerScore = std::max(target.towerScore, source.towerScore);
+    target.layoutSpreadScore = std::max(target.layoutSpreadScore, source.layoutSpreadScore);
+    target.unusedSheetRegionScore = std::max(target.unusedSheetRegionScore, source.unusedSheetRegionScore);
+    target.lowContactPartCount = std::max(target.lowContactPartCount, source.lowContactPartCount);
+    target.qualityFailReason += source.qualityFailReason;
+    target.rowBaselineUsed += source.rowBaselineUsed;
+    target.contourSeedUsed += source.contourSeedUsed;
+    target.rowFallbackUsed += source.rowFallbackUsed;
+    target.activeMoveSummary.contact += source.activeMoveSummary.contact;
+    target.activeMoveSummary.compression += source.activeMoveSummary.compression;
+    target.activeMoveSummary.gap += source.activeMoveSummary.gap;
+    target.activeMoveSummary.hole += source.activeMoveSummary.hole;
+    target.activeMoveSummary.concavity += source.activeMoveSummary.concavity;
+    target.activeMoveSummary.smallPart += source.activeMoveSummary.smallPart;
+    target.activeMoveSummary.swap += source.activeMoveSummary.swap;
+    target.activeMoveSummary.chain += source.activeMoveSummary.chain;
+    target.activeMoveSummary.cluster += source.activeMoveSummary.cluster;
+    target.activeMoveSummary.region += source.activeMoveSummary.region;
+    target.activeMoveSummary.rotation += source.activeMoveSummary.rotation;
+    target.activeMoveSummary.mirror += source.activeMoveSummary.mirror;
+    target.activeMoveSummary.escape += source.activeMoveSummary.escape;
+    target.activeMoveSummary.frontier += source.activeMoveSummary.frontier;
+    target.acceptedMoveSummary.contact += source.acceptedMoveSummary.contact;
+    target.acceptedMoveSummary.compression += source.acceptedMoveSummary.compression;
+    target.acceptedMoveSummary.gap += source.acceptedMoveSummary.gap;
+    target.acceptedMoveSummary.hole += source.acceptedMoveSummary.hole;
+    target.acceptedMoveSummary.concavity += source.acceptedMoveSummary.concavity;
+    target.acceptedMoveSummary.smallPart += source.acceptedMoveSummary.smallPart;
+    target.acceptedMoveSummary.swap += source.acceptedMoveSummary.swap;
+    target.acceptedMoveSummary.chain += source.acceptedMoveSummary.chain;
+    target.acceptedMoveSummary.cluster += source.acceptedMoveSummary.cluster;
+    target.acceptedMoveSummary.region += source.acceptedMoveSummary.region;
+    target.acceptedMoveSummary.rotation += source.acceptedMoveSummary.rotation;
+    target.acceptedMoveSummary.mirror += source.acceptedMoveSummary.mirror;
+    target.acceptedMoveSummary.escape += source.acceptedMoveSummary.escape;
+    target.acceptedMoveSummary.frontier += source.acceptedMoveSummary.frontier;
 }
 
 void refreshTimingStats(SolverStats& stats, Clock::time_point started) {
     stats.elapsedMs = elapsedSeconds(started) * 1000.0;
     const double elapsed = std::max(0.001, stats.elapsedMs / 1000.0);
     stats.candidatesPerSecond = static_cast<double>(stats.evaluatedCandidates) / elapsed;
+}
+
+void refreshQualityStats(const Document& document, const EngineSettings& settings, const LayoutState& state, SolverStats& stats) {
+    EmptySpaceAnalyzer analyzer;
+    const EmptySpaceMap map = analyzer.analyze(document, settings, state);
+    stats.emptySpaceArea = map.totalEmptyArea;
+    stats.largestEmptyRegionArea = map.largestRegionArea;
+    const double avgSmall = std::max(1.0, document.totalPartArea() / std::max<size_t>(1, document.parts.size()) * 0.35);
+    stats.fillableGapCount = map.fillableRegionCount(avgSmall);
+    stats.contactCount = static_cast<size_t>(std::llround(std::max(0.0, state.contactReward)));
+    const LayoutShapeMetrics shapeMetrics = computeLayoutShapeMetrics(document, settings, map.usedBounds);
+    stats.towerScore = shapeMetrics.towerScore;
+    stats.layoutSpreadScore = shapeMetrics.layoutSpreadScore;
+    stats.unusedSheetRegionScore = shapeMetrics.unusedSheetRegionScore;
+    BroadPhase broad;
+    const auto nearPairs = broad.findCandidatePairs(document.parts, state.poses, std::max(settings.partSpacing, 25.0));
+    double clearanceSum = 0.0;
+    size_t clearanceSamples = 0;
+    std::vector<size_t> contactByPart(std::min(document.parts.size(), state.poses.size()), 0);
+    for (const auto& [a, b] : nearPairs) {
+        if (a >= document.parts.size() || b >= document.parts.size() || a >= state.poses.size() || b >= state.poses.size()) {
+            continue;
+        }
+        if (partsCollide(document.parts[a], state.poses[a], document.parts[b], state.poses[b], settings.collisionTolerance)) {
+            clearanceSum += 0.0;
+            ++clearanceSamples;
+            if (a < contactByPart.size()) {
+                ++contactByPart[a];
+            }
+            if (b < contactByPart.size()) {
+                ++contactByPart[b];
+            }
+            continue;
+        }
+        const ClearanceResult clearance = minimumBoundaryDistance(
+            transformPart(document.parts[a], state.poses[a], static_cast<int>(a)),
+            transformPart(document.parts[b], state.poses[b], static_cast<int>(b)),
+            settings.partSpacing,
+            settings.collisionTolerance);
+        if (std::isfinite(clearance.minDistance)) {
+            clearanceSum += clearance.minDistance;
+            ++clearanceSamples;
+            if (clearance.minDistance <= settings.partSpacing + 2.5) {
+                if (a < contactByPart.size()) {
+                    ++contactByPart[a];
+                }
+                if (b < contactByPart.size()) {
+                    ++contactByPart[b];
+                }
+            }
+        }
+    }
+    stats.averageClearance = clearanceSamples > 0 ? clearanceSum / static_cast<double>(clearanceSamples) : 0.0;
+    stats.lowContactPartCount = static_cast<size_t>(std::count(contactByPart.begin(), contactByPart.end(), size_t{0}));
 }
 
 bool posesDiffer(const std::vector<Pose>& a, const std::vector<Pose>& b) {
@@ -261,6 +381,273 @@ bool posesDiffer(const std::vector<Pose>& a, const std::vector<Pose>& b) {
     return false;
 }
 
+size_t usableRingPointCount(const std::vector<Vec2>& points) {
+    if (points.size() > 2 && almostEqual(points.front(), points.back(), 1e-9)) {
+        return points.size() - 1;
+    }
+    return points.size();
+}
+
+std::vector<Vec2> sampleTransformedBoundaryPoints(const TransformedPart& part, size_t limit) {
+    std::vector<Vec2> points;
+    if (limit == 0) {
+        return points;
+    }
+    for (const TransformedRing& ring : part.rings) {
+        const size_t count = usableRingPointCount(ring.points);
+        if (count == 0) {
+            continue;
+        }
+        const size_t stride = std::max<size_t>(1, count / std::max<size_t>(1, limit / std::max<size_t>(1, part.rings.size())));
+        for (size_t i = 0; i < count && points.size() < limit; i += stride) {
+            points.push_back(ring.points[i]);
+        }
+    }
+    return points;
+}
+
+std::vector<Vec2> sampleLocalBoundaryPoints(const Part& part, size_t limit) {
+    Pose origin;
+    return sampleTransformedBoundaryPoints(transformPart(part, origin), limit);
+}
+
+std::vector<size_t> contourSeedOrder(const Document& document, unsigned int seed) {
+    std::vector<size_t> sorted(document.parts.size());
+    std::iota(sorted.begin(), sorted.end(), 0);
+    std::stable_sort(sorted.begin(), sorted.end(), [&](size_t a, size_t b) {
+        const double areaA = scoreArea(document.parts[a]);
+        const double areaB = scoreArea(document.parts[b]);
+        if (std::abs(areaA - areaB) > 1e-9) {
+            return areaA > areaB;
+        }
+        return a < b;
+    });
+
+    std::vector<size_t> order;
+    order.reserve(sorted.size());
+    size_t left = 0;
+    size_t right = sorted.empty() ? 0 : sorted.size() - 1;
+    bool takeLarge = true;
+    while (left <= right && !sorted.empty()) {
+        if (takeLarge) {
+            order.push_back(sorted[left++]);
+        } else {
+            order.push_back(sorted[right--]);
+        }
+        takeLarge = !takeLarge;
+    }
+    if (seed % 2u == 1u && order.size() > 4) {
+        std::rotate(order.begin() + 1, order.begin() + static_cast<std::ptrdiff_t>(order.size() / 3), order.end());
+    }
+    return order;
+}
+
+bool candidateFitsPlaced(
+    const Document& document,
+    const EngineSettings& settings,
+    const std::vector<Pose>& poses,
+    const std::vector<size_t>& placed,
+    const std::vector<AABB>& placedBounds,
+    size_t partIndex,
+    const Pose& pose) {
+    const AABB candidateBounds = transformedBounds(document.parts[partIndex], pose);
+    if (!isPartInsideSheet(document.parts[partIndex], pose, document.sheet, settings.collisionTolerance) ||
+        !partRespectsSheetClearance(document.parts[partIndex], pose, document.sheet, settings.margin, settings.collisionTolerance)) {
+        return false;
+    }
+    const AABB expanded = candidateBounds.expanded(settings.partSpacing + settings.collisionTolerance);
+    for (size_t p = 0; p < placed.size(); ++p) {
+        const size_t other = placed[p];
+        if (p < placedBounds.size() && !expanded.overlaps(placedBounds[p], settings.collisionTolerance)) {
+            continue;
+        }
+        if (partsCollide(document.parts[partIndex], pose, document.parts[other], poses[other], settings.collisionTolerance) ||
+            !partsRespectClearance(document.parts[partIndex], pose, document.parts[other], poses[other], settings.partSpacing, settings.collisionTolerance)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+double contourContactScore(
+    const Document& document,
+    const EngineSettings& settings,
+    const std::vector<Pose>& poses,
+    const std::vector<size_t>& placed,
+    const std::vector<AABB>& placedBounds,
+    size_t partIndex,
+    const Pose& pose) {
+    const TransformedPart moving = transformPart(document.parts[partIndex], pose, static_cast<int>(partIndex));
+    double contact = 0.0;
+    const double window = std::max(0.05, settings.collisionTolerance * 10.0);
+    const AABB expanded = moving.bounds.expanded(settings.partSpacing + window);
+    for (size_t p = 0; p < placed.size(); ++p) {
+        const size_t other = placed[p];
+        if (p < placedBounds.size() && !expanded.overlaps(placedBounds[p], window)) {
+            continue;
+        }
+        const TransformedPart placedPart = transformPart(document.parts[other], poses[other], static_cast<int>(other));
+        const ClearanceResult distanceResult = minimumBoundaryDistance(moving, placedPart, settings.partSpacing, settings.collisionTolerance);
+        if (std::abs(distanceResult.minDistance - settings.partSpacing) <= window) {
+            contact += 1.0 + document.parts[other].rings.size() * 0.15;
+        }
+        for (const TransformedRing& ring : placedPart.rings) {
+            if (ring.isHole && pointInRing(ring.points, moving.bounds.center(), settings.collisionTolerance) != PointLocation::Outside) {
+                contact += 5.0;
+            }
+        }
+    }
+    return contact;
+}
+
+double contourSeedCandidateScore(
+    const Document& document,
+    const EngineSettings& settings,
+    const std::vector<Pose>& poses,
+    const std::vector<size_t>& placed,
+    const std::vector<AABB>& placedBounds,
+    size_t partIndex,
+    const Pose& pose) {
+    AABB used;
+    for (size_t other : placed) {
+        used.include(transformedBounds(document.parts[other], poses[other]));
+    }
+    used.include(transformedBounds(document.parts[partIndex], pose));
+    const Vec2 sheetCenter{settings.sheetWidth * 0.5, settings.sheetHeight * 0.5};
+    const Vec2 center = transformedBounds(document.parts[partIndex], pose).center();
+    const double contact = contourContactScore(document, settings, poses, placed, placedBounds, partIndex, pose);
+    const double centerBias = distance(center, sheetCenter) * 0.03;
+    return used.area() + centerBias - contact * 650.0;
+}
+
+void appendUniquePose(std::vector<Pose>& poses, const Pose& pose) {
+    for (const Pose& existing : poses) {
+        if (std::abs(existing.x - pose.x) < 1e-6 &&
+            std::abs(existing.y - pose.y) < 1e-6 &&
+            std::abs(existing.angleRadians - pose.angleRadians) < 1e-9 &&
+            existing.mirrored == pose.mirrored) {
+            return;
+        }
+    }
+    poses.push_back(pose);
+}
+
+std::vector<Pose> contourSeedCandidates(
+    const Document& document,
+    const EngineSettings& settings,
+    const std::vector<Pose>& poses,
+    const std::vector<size_t>& placed,
+    size_t partIndex,
+    const std::vector<double>& rotations,
+    const std::vector<bool>& mirrors,
+    size_t placedOrdinal,
+    unsigned int seed) {
+    std::vector<Pose> candidates;
+    const Part& part = document.parts[partIndex];
+    const Vec2 sheetCenter{settings.sheetWidth * 0.5, settings.sheetHeight * 0.5};
+    constexpr double goldenAngle = 2.39996322972865332;
+    const bool largeJob = document.parts.size() > 180;
+    const size_t orientationLimit = largeJob
+        ? (settings.performanceProfile == PerformanceProfile::Maximum ? 3u : 2u)
+        : (settings.performanceProfile == PerformanceProfile::Maximum ? 6u : 4u);
+    size_t orientationCount = 0;
+    for (double angle : rotations) {
+        for (bool mirrored : mirrors) {
+            if (++orientationCount > orientationLimit) {
+                break;
+            }
+            Pose orientation;
+            orientation.angleRadians = angle;
+            orientation.mirrored = mirrored;
+            const AABB local = transformedBounds(part, orientation);
+            const std::array<Vec2, 9> sheetAnchors{
+                sheetCenter,
+                Vec2{settings.margin + local.width() * 0.5, settings.margin + local.height() * 0.5},
+                Vec2{settings.sheetWidth - settings.margin - local.width() * 0.5, settings.margin + local.height() * 0.5},
+                Vec2{settings.margin + local.width() * 0.5, settings.sheetHeight - settings.margin - local.height() * 0.5},
+                Vec2{settings.sheetWidth - settings.margin - local.width() * 0.5, settings.sheetHeight - settings.margin - local.height() * 0.5},
+                Vec2{settings.sheetWidth * 0.5, settings.margin + local.height() * 0.5},
+                Vec2{settings.sheetWidth * 0.5, settings.sheetHeight - settings.margin - local.height() * 0.5},
+                Vec2{settings.margin + local.width() * 0.5, settings.sheetHeight * 0.5},
+                Vec2{settings.sheetWidth - settings.margin - local.width() * 0.5, settings.sheetHeight * 0.5}
+            };
+            for (Vec2 anchor : sheetAnchors) {
+                appendUniquePose(candidates, poseFromCenterAnchor({angle, mirrored, local}, anchor));
+            }
+
+            const double radius = std::sqrt(static_cast<double>(placedOrdinal + 1u)) *
+                std::max(local.width(), local.height()) * 0.85;
+            const size_t spiralLimit = largeJob
+                ? (settings.performanceProfile == PerformanceProfile::Maximum ? 6u : 4u)
+                : 10u;
+            for (size_t s = 0; s < spiralLimit; ++s) {
+                const double theta = (static_cast<double>(placedOrdinal + s + seed % 17u) + 1.0) * goldenAngle;
+                Vec2 anchor{
+                    clampLocal(sheetCenter.x + std::cos(theta) * (radius + static_cast<double>(s) * 7.0), settings.margin + local.width() * 0.5, settings.sheetWidth - settings.margin - local.width() * 0.5),
+                    clampLocal(sheetCenter.y + std::sin(theta) * (radius + static_cast<double>(s) * 7.0), settings.margin + local.height() * 0.5, settings.sheetHeight - settings.margin - local.height() * 0.5)
+                };
+                appendUniquePose(candidates, poseFromCenterAnchor({angle, mirrored, local}, anchor));
+            }
+
+            const TransformedPart movingAtOrigin = transformPart(part, orientation, static_cast<int>(partIndex));
+            const std::vector<Vec2> movingPoints = sampleTransformedBoundaryPoints(
+                movingAtOrigin,
+                largeJob ? (settings.performanceProfile == PerformanceProfile::Maximum ? 6u : 4u) : 8u);
+            const size_t ownerLimit = largeJob
+                ? (settings.performanceProfile == PerformanceProfile::Maximum ? 12u : 5u)
+                : (settings.performanceProfile == PerformanceProfile::Maximum ? 16u : 10u);
+            for (size_t ownerPos = 0; ownerPos < placed.size() && ownerPos < ownerLimit; ++ownerPos) {
+                const size_t owner = placed[placed.size() - ownerPos - 1u];
+                const TransformedPart placedPart = transformPart(document.parts[owner], poses[owner], static_cast<int>(owner));
+                for (const TransformedRing& ring : placedPart.rings) {
+                    const std::vector<Vec2> ownerPoints = sampleTransformedBoundaryPoints(
+                        {static_cast<int>(owner), {ring}, ring.bounds},
+                        largeJob ? (settings.performanceProfile == PerformanceProfile::Maximum ? (ring.isHole ? 10u : 6u) : 4u) : (ring.isHole ? 10u : 6u));
+                    for (Vec2 ownerPoint : ownerPoints) {
+                        for (Vec2 movingPoint : movingPoints) {
+                            Pose candidate = orientation;
+                            candidate.x = ownerPoint.x - movingPoint.x;
+                            candidate.y = ownerPoint.y - movingPoint.y;
+                            appendUniquePose(candidates, candidate);
+                        }
+                    }
+                    if (ring.isHole) {
+                        const std::array<Vec2, 5> holeAnchors{
+                            ring.bounds.center(),
+                            Vec2{ring.bounds.min.x + local.width() * 0.5, ring.bounds.min.y + local.height() * 0.5},
+                            Vec2{ring.bounds.max.x - local.width() * 0.5, ring.bounds.min.y + local.height() * 0.5},
+                            Vec2{ring.bounds.min.x + local.width() * 0.5, ring.bounds.max.y - local.height() * 0.5},
+                            Vec2{ring.bounds.max.x - local.width() * 0.5, ring.bounds.max.y - local.height() * 0.5}
+                        };
+                        for (Vec2 anchor : holeAnchors) {
+                            appendUniquePose(candidates, poseFromCenterAnchor({angle, mirrored, local}, anchor));
+                        }
+                    }
+                }
+
+                const AABB ownerBox = placedPart.bounds;
+                const std::array<Vec2, 8> bboxContactAnchors{
+                    Vec2{ownerBox.max.x + settings.partSpacing + local.width() * 0.5, ownerBox.min.y + local.height() * 0.5},
+                    Vec2{ownerBox.max.x + settings.partSpacing + local.width() * 0.5, ownerBox.center().y},
+                    Vec2{ownerBox.max.x + settings.partSpacing + local.width() * 0.5, ownerBox.max.y - local.height() * 0.5},
+                    Vec2{ownerBox.min.x - settings.partSpacing - local.width() * 0.5, ownerBox.center().y},
+                    Vec2{ownerBox.center().x, ownerBox.max.y + settings.partSpacing + local.height() * 0.5},
+                    Vec2{ownerBox.center().x, ownerBox.min.y - settings.partSpacing - local.height() * 0.5},
+                    Vec2{ownerBox.min.x + local.width() * 0.5, ownerBox.max.y + settings.partSpacing + local.height() * 0.5},
+                    Vec2{ownerBox.max.x - local.width() * 0.5, ownerBox.min.y - settings.partSpacing - local.height() * 0.5}
+                };
+                for (Vec2 anchor : bboxContactAnchors) {
+                    appendUniquePose(candidates, poseFromCenterAnchor({angle, mirrored, local}, anchor));
+                }
+            }
+        }
+        if (orientationCount > orientationLimit) {
+            break;
+        }
+    }
+    return candidates;
+}
+
 double phaseGuardSeconds(size_t partCount, PerformanceProfile profile, double multiplier) {
     const double perPart = profile == PerformanceProfile::Maximum ? 0.00030 :
         profile == PerformanceProfile::Balanced ? 0.00022 : 0.00015;
@@ -269,6 +656,42 @@ double phaseGuardSeconds(size_t partCount, PerformanceProfile profile, double mu
 
 bool hasPhaseBudget(Clock::time_point started, double limitSeconds, size_t partCount, PerformanceProfile profile, double multiplier) {
     return elapsedSeconds(started) + phaseGuardSeconds(partCount, profile, multiplier) < limitSeconds;
+}
+
+bool qualityBetterLayout(const LayoutState& candidate, const LayoutState& incumbent) {
+    if (!candidate.valid()) {
+        return false;
+    }
+    if (!incumbent.valid()) {
+        return true;
+    }
+    if (candidate.utilization > incumbent.utilization + 1e-6) {
+        return true;
+    }
+    const double candidateArea = std::max(1.0, candidate.usedWidth * candidate.usedHeight);
+    const double incumbentArea = std::max(1.0, incumbent.usedWidth * incumbent.usedHeight);
+    if (candidateArea + std::max(1.0, incumbentArea * 0.001) < incumbentArea) {
+        return true;
+    }
+    AABB candidateBounds;
+    AABB incumbentBounds;
+    for (size_t i = 0; i < candidate.poses.size(); ++i) {
+        candidateBounds.include({candidate.poses[i].x, candidate.poses[i].y});
+    }
+    for (size_t i = 0; i < incumbent.poses.size(); ++i) {
+        incumbentBounds.include({incumbent.poses[i].x, incumbent.poses[i].y});
+    }
+    const double candidateAspect = candidateBounds.isValid() && candidateBounds.width() > 1e-9 && candidateBounds.height() > 1e-9
+        ? std::max(candidateBounds.width() / candidateBounds.height(), candidateBounds.height() / candidateBounds.width())
+        : 1.0;
+    const double incumbentAspect = incumbentBounds.isValid() && incumbentBounds.width() > 1e-9 && incumbentBounds.height() > 1e-9
+        ? std::max(incumbentBounds.width() / incumbentBounds.height(), incumbentBounds.height() / incumbentBounds.width())
+        : 1.0;
+    if (candidateAspect + 0.50 < incumbentAspect && candidate.utilization + 0.05 >= incumbent.utilization) {
+        return true;
+    }
+    return std::abs(candidate.utilization - incumbent.utilization) <= 1e-6 &&
+        candidate.totalScore + 1e-9 < incumbent.totalScore;
 }
 
 struct AttemptResult {
@@ -366,8 +789,8 @@ LayoutState MultiStartSolver::rowBaseline(const Document& document, const Engine
             } else {
                 anchor = centerOutAnchor(placed, std::max(width, height), settings);
             }
-            anchor.x = clamp(anchor.x, leftLimit + width * 0.5, rightLimit - width * 0.5);
-            anchor.y = clamp(anchor.y, lowLimit + height * 0.5, highLimit - height * 0.5);
+            anchor.x = clampLocal(anchor.x, leftLimit + width * 0.5, rightLimit - width * 0.5);
+            anchor.y = clampLocal(anchor.y, lowLimit + height * 0.5, highLimit - height * 0.5);
             state.poses[idx] = poseFromCenterAnchor(choice, anchor);
             continue;
         }
@@ -406,6 +829,71 @@ LayoutState MultiStartSolver::rowBaseline(const Document& document, const Engine
     return scorer.evaluate(document, settings, state.poses, &penalties);
 }
 
+LayoutState MultiStartSolver::contourSeedBaseline(const Document& document, const EngineSettings& settings, unsigned int seed) const {
+    LayoutState state;
+    state.poses.resize(document.parts.size());
+    if (document.parts.empty()) {
+        return state;
+    }
+
+    PoseSampler sampler;
+    std::vector<double> rotations = sampler.coarseRotationSamples(settings);
+    if (!settings.allowRotation || settings.rotationMode == RotationMode::None) {
+        rotations = {0.0};
+    }
+    std::vector<bool> mirrors = sampler.mirrorSamples(settings);
+    if (!settings.allowMirroring) {
+        mirrors = {false};
+    }
+
+    const std::vector<size_t> order = contourSeedOrder(document, seed);
+    std::vector<size_t> placed;
+    std::vector<AABB> placedBounds;
+    placed.reserve(order.size());
+    placedBounds.reserve(order.size());
+    for (size_t ordinal = 0; ordinal < order.size(); ++ordinal) {
+        const size_t index = order[ordinal];
+        std::vector<Pose> candidates = contourSeedCandidates(
+            document,
+            settings,
+            state.poses,
+            placed,
+            index,
+            rotations,
+            mirrors,
+            ordinal,
+            seed + static_cast<unsigned int>(ordinal * 13u));
+
+        Pose bestPose;
+        double bestScore = std::numeric_limits<double>::max();
+        bool found = false;
+        for (const Pose& candidate : candidates) {
+            if (!candidateFitsPlaced(document, settings, state.poses, placed, placedBounds, index, candidate)) {
+                continue;
+            }
+            const double score = contourSeedCandidateScore(document, settings, state.poses, placed, placedBounds, index, candidate);
+            if (score < bestScore) {
+                bestScore = score;
+                bestPose = candidate;
+                found = true;
+            }
+        }
+        if (!found) {
+            LayoutState failed = state;
+            LayoutScore scorer;
+            PenaltySystem penalties;
+            return scorer.evaluate(document, settings, failed.poses, &penalties);
+        }
+        state.poses[index] = bestPose;
+        placed.push_back(index);
+        placedBounds.push_back(transformedBounds(document.parts[index], bestPose));
+    }
+
+    LayoutScore scorer;
+    PenaltySystem penalties;
+    return scorer.evaluate(document, settings, state.poses, &penalties);
+}
+
 LayoutState MultiStartSolver::solve(
     const Document& document,
     const EngineSettings& settings,
@@ -418,11 +906,12 @@ LayoutState MultiStartSolver::solve(
     const unsigned int baseSeed = settings.randomSeed == 0u ? 1u : settings.randomSeed;
     LayoutState best;
     bool foundValidBaseline = false;
-    const auto baselineStrategies = strategySchedule(settings.placementStrategy);
-    for (PlacementStrategy strategy : baselineStrategies) {
-        for (int orderMode = 0; orderMode < 4; ++orderMode) {
-            LayoutState candidate = rowBaseline(document, settings, strategy, baseSeed ^ static_cast<unsigned int>(orderMode * 7919 + 17), orderMode);
-            if (candidate.valid() && (!foundValidBaseline || candidate.totalScore < best.totalScore)) {
+
+    if (settings.performanceProfile != PerformanceProfile::Fast) {
+        const int contourAttempts = settings.performanceProfile == PerformanceProfile::Maximum ? 3 : 2;
+        for (int attempt = 0; attempt < contourAttempts; ++attempt) {
+            LayoutState candidate = contourSeedBaseline(document, settings, baseSeed ^ static_cast<unsigned int>(attempt * 104729 + 31));
+            if (candidate.valid() && (!foundValidBaseline || qualityBetterLayout(candidate, best))) {
                 if (foundValidBaseline) {
                     ++aggregateStats.bestUpdates;
                 }
@@ -430,12 +919,40 @@ LayoutState MultiStartSolver::solve(
                 foundValidBaseline = true;
             }
         }
-        if (foundValidBaseline && settings.performanceProfile == PerformanceProfile::Fast) {
-            break;
+        if (foundValidBaseline) {
+            ++aggregateStats.contourSeedUsed;
+            aggregateStats.activeMoveSummary.contact += document.parts.size();
+        }
+    }
+
+    if (settings.performanceProfile == PerformanceProfile::Fast || !foundValidBaseline) {
+        const auto baselineStrategies = strategySchedule(settings.placementStrategy);
+        for (PlacementStrategy strategy : baselineStrategies) {
+            for (int orderMode = 0; orderMode < 4; ++orderMode) {
+                LayoutState candidate = rowBaseline(document, settings, strategy, baseSeed ^ static_cast<unsigned int>(orderMode * 7919 + 17), orderMode);
+                if (candidate.valid() && (!foundValidBaseline || qualityBetterLayout(candidate, best))) {
+                    if (foundValidBaseline) {
+                        ++aggregateStats.bestUpdates;
+                    }
+                    best = std::move(candidate);
+                    foundValidBaseline = true;
+                }
+            }
+            if (foundValidBaseline && settings.performanceProfile == PerformanceProfile::Fast) {
+                break;
+            }
+        }
+        if (foundValidBaseline) {
+            if (settings.performanceProfile == PerformanceProfile::Fast) {
+                ++aggregateStats.rowBaselineUsed;
+            } else {
+                ++aggregateStats.rowFallbackUsed;
+            }
         }
     }
     if (!foundValidBaseline) {
         best = rowBaseline(document, settings, settings.placementStrategy, baseSeed, 0);
+        ++aggregateStats.rowFallbackUsed;
         refreshTimingStats(aggregateStats, started);
         lastStats_ = aggregateStats;
         if (callback) {
@@ -461,9 +978,10 @@ LayoutState MultiStartSolver::solve(
 
     aggregateStats.workerCount = 1;
     aggregateStats.attemptsStarted = 1;
+    LayoutState bestBeforeAdaptive = best;
     AdaptiveUnifiedOptimizer optimizer;
     const double totalLimit = effectiveSafetyTimeLimitSeconds(settings, document.parts.size());
-    best = optimizer.optimize(document, settings, std::move(best), globalPenalty, stopRequested, aggregateStats, [&](const AdaptiveProgressEvent& event) {
+    LayoutState optimized = optimizer.optimize(document, settings, best, globalPenalty, stopRequested, aggregateStats, [&](const AdaptiveProgressEvent& event) {
         if (!callback) {
             return;
         }
@@ -484,8 +1002,60 @@ LayoutState MultiStartSolver::solve(
         solverProgress.bestUpdated = event.bestUpdated;
         callback(solverProgress);
     });
+    best = qualityBetterLayout(optimized, bestBeforeAdaptive) ? std::move(optimized) : std::move(bestBeforeAdaptive);
+
+    if (!stopRequested.load() && settings.performanceProfile != PerformanceProfile::Fast) {
+        LocalRegionRepack localRepack;
+        LayoutState improved = localRepack.improve(document, settings, best, stopRequested, &aggregateStats);
+        if (improved.valid() && (qualityBetterLayout(improved, best) || improved.totalScore + 1e-9 < best.totalScore)) {
+            best = std::move(improved);
+            if (callback) {
+                SolverProgress solverProgress;
+                solverProgress.phase = SolverPhase::Rearrangement;
+                solverProgress.currentStrategy = SolverStrategy::RegionRepack;
+                solverProgress.progress = 0.95;
+                solverProgress.current = best;
+                solverProgress.best = best;
+                solverProgress.elapsedSeconds = elapsedSeconds(started);
+                solverProgress.stats = aggregateStats;
+                solverProgress.activeMoves.region = aggregateStats.localRegionRepackAccepted;
+                solverProgress.versionId = aggregateStats.bestUpdates + 2;
+                solverProgress.layoutChanged = true;
+                solverProgress.lastMoveStrategy = SolverStrategy::RegionRepack;
+                solverProgress.bestUpdated = true;
+                callback(solverProgress);
+            }
+        }
+    }
+
+    if (!stopRequested.load() && settings.performanceProfile != PerformanceProfile::Fast) {
+        AggressiveGapFiller gapFiller;
+        LayoutState improved = gapFiller.improve(document, settings, best, stopRequested, &aggregateStats);
+        if (qualityBetterLayout(improved, best)) {
+            best = std::move(improved);
+            if (callback) {
+                SolverProgress solverProgress;
+                solverProgress.phase = SolverPhase::GapFilling;
+                solverProgress.currentStrategy = SolverStrategy::GapFilling;
+                solverProgress.progress = 0.97;
+                solverProgress.current = best;
+                solverProgress.best = best;
+                solverProgress.elapsedSeconds = elapsedSeconds(started);
+                solverProgress.stats = aggregateStats;
+                solverProgress.activeMoves.gap = aggregateStats.aggressiveGapAccepted;
+                solverProgress.activeMoves.contact = aggregateStats.slideToContactAccepted;
+                solverProgress.versionId = aggregateStats.bestUpdates + 2;
+                solverProgress.layoutChanged = true;
+                solverProgress.lastMoveStrategy = SolverStrategy::GapFilling;
+                solverProgress.bestUpdated = true;
+                callback(solverProgress);
+            }
+        }
+    }
+
     current = best;
     aggregateStats.attemptsCompleted = 1;
+    refreshQualityStats(document, settings, best, aggregateStats);
     refreshTimingStats(aggregateStats, started);
     lastStats_ = aggregateStats;
     return best;

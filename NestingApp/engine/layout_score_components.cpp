@@ -87,4 +87,35 @@ double cavityPlacementReward(const Document& document, const std::vector<Pose>& 
     return reward;
 }
 
+LayoutShapeMetrics computeLayoutShapeMetrics(const Document& document, const EngineSettings& settings, const AABB& usedBounds) {
+    LayoutShapeMetrics metrics;
+    if (!usedBounds.isValid() || usedBounds.width() <= 1e-9 || usedBounds.height() <= 1e-9) {
+        return metrics;
+    }
+
+    const double sheetWidth = std::max(1.0, (document.sheet.width > 0.0 ? document.sheet.width : settings.sheetWidth) - settings.margin * 2.0);
+    const double sheetHeight = std::max(1.0, (document.sheet.height > 0.0 ? document.sheet.height : settings.sheetHeight) - settings.margin * 2.0);
+    const double usedWidth = std::max(1.0, usedBounds.width());
+    const double usedHeight = std::max(1.0, usedBounds.height());
+    const double usedAspect = std::max(usedWidth / usedHeight, usedHeight / usedWidth);
+    const double sheetAspect = std::max(sheetWidth / sheetHeight, sheetHeight / sheetWidth);
+    const double aspectAllowance = std::max(2.15, sheetAspect * 1.65);
+
+    metrics.towerScore = std::max(0.0, usedAspect / aspectAllowance - 1.0);
+
+    const double widthCoverage = std::min(1.0, usedWidth / sheetWidth);
+    const double heightCoverage = std::min(1.0, usedHeight / sheetHeight);
+    const double narrowCoverage = std::min(widthCoverage, heightCoverage);
+    const double wideCoverage = std::max(widthCoverage, heightCoverage);
+    if (wideCoverage > 0.58 && narrowCoverage < 0.24) {
+        metrics.towerScore += (0.24 - narrowCoverage) * 2.0 * wideCoverage;
+    }
+
+    // Good spread here means "not a needle". It is intentionally mild so a compact corner cluster is still allowed.
+    metrics.layoutSpreadScore = std::sqrt(std::max(0.0, widthCoverage * heightCoverage));
+    const double sheetArea = std::max(1.0, sheetWidth * sheetHeight);
+    metrics.unusedSheetRegionScore = std::max(0.0, 1.0 - (usedWidth * usedHeight) / sheetArea);
+    return metrics;
+}
+
 } // namespace nest

@@ -2,10 +2,12 @@
 
 #include "core/math_utils.h"
 #include "engine/convergence.h"
+#include "engine/empty_space_map.h"
 #include "engine/free_space_analyzer.h"
 #include "engine/frontier_analyzer.h"
 #include "engine/layout_eval_cache.h"
 #include "engine/layout_score.h"
+#include "engine/layout_score_components.h"
 #include "engine/pose_sampler.h"
 #include "geometry/transformed_shape.h"
 #include <algorithm>
@@ -632,7 +634,7 @@ bool operatorApplies(OperatorKind kind, const PartState& part, size_t noImprovem
     const double threshold = noImprovementSteps > 4 ? 0.08 : 0.16;
     switch (kind) {
     case OperatorKind::ContactPacking:
-        return std::max(part.need.needsCompression, part.need.needsGapMove) > threshold ||
+        return part.need.needsContactPacking > threshold ||
             part.nearBoundary || part.inDenseRegion;
     case OperatorKind::Compression:
         return part.need.needsCompression > threshold || part.hasCollision;
@@ -644,7 +646,9 @@ bool operatorApplies(OperatorKind kind, const PartState& part, size_t noImprovem
         return part.need.needsConcavityFitting > threshold || part.candidateForConcavity;
     case OperatorKind::SmallPartFiller:
         return (1.0 - part.sizeRank) > 0.45 &&
-            std::max({part.need.needsHoleFilling, part.need.needsConcavityFitting, part.need.needsGapMove}) > threshold;
+            (std::max({part.need.needsHoleFilling, part.need.needsConcavityFitting, part.need.needsGapMove}) > threshold ||
+             part.need.wastedSpaceAround > threshold * 0.65 ||
+             part.need.mobilityScore > threshold * 0.80);
     case OperatorKind::Swap:
         return part.need.needsSwap > threshold;
     case OperatorKind::EjectionChain:
@@ -668,9 +672,7 @@ bool operatorApplies(OperatorKind kind, const PartState& part, size_t noImprovem
 double operatorNeedScore(OperatorKind kind, const PartState& part, size_t noImprovementSteps) {
     switch (kind) {
     case OperatorKind::ContactPacking:
-        return std::max(part.need.needsCompression, part.need.needsGapMove) * 0.65 +
-            part.need.boundaryContribution * 0.20 +
-            part.need.mobilityScore * 0.15;
+        return part.need.needsContactPacking;
     case OperatorKind::Compression:
         return part.need.needsCompression;
     case OperatorKind::GapFilling:
@@ -768,9 +770,34 @@ std::vector<MoveTask> buildMoveTasks(
             task.partIndex = part.part;
             task.operatorType = kind;
             task.estimatedGain = need * (1.0 + part.potentialScore);
+            double profileBias = 1.0;
+            if (settings.performanceProfile != PerformanceProfile::Fast) {
+                switch (kind) {
+                case OperatorKind::ContactPacking:
+                    profileBias = 2.30;
+                    break;
+                case OperatorKind::HoleFilling:
+                case OperatorKind::ConcavityFilling:
+                    profileBias = 2.10;
+                    break;
+                case OperatorKind::Frontier:
+                    profileBias = 1.65;
+                    break;
+                case OperatorKind::RotationRefinement:
+                case OperatorKind::Mirror:
+                    profileBias = 1.35;
+                    break;
+                case OperatorKind::Compression:
+                    profileBias = 0.55;
+                    break;
+                default:
+                    profileBias = 1.0;
+                    break;
+                }
+            }
             task.priority = collisionBoost +
                 part.priority * 0.08 +
-                task.estimatedGain * 100.0 * scheduler * bias +
+                task.estimatedGain * 100.0 * scheduler * bias * profileBias +
                 mixedSizeBoost * 45.0;
             tasks.push_back(task);
         }
@@ -944,6 +971,13 @@ std::vector<PartState> analyzeParts(
         part.need.needsMirror = clamp01((part.mirrorSensitive ? 0.25 : 0.0) + holeScore * 0.25 + concavityScore * 0.20);
         part.need.needsHoleFilling = clamp01(holeScore + static_cast<double>(fittingHoleCount > 0 ? 1 : 0) * 0.20);
         part.need.needsConcavityFitting = clamp01(concavityScore + static_cast<double>(fittingConcavityCount > 0 ? 1 : 0) * 0.15);
+        part.need.needsContactPacking = clamp01(
+            part.need.boundaryContribution * 0.25 +
+            part.need.wastedSpaceAround * 0.20 +
+            part.need.mobilityScore * 0.20 +
+            holeScore * 0.20 +
+            concavityScore * 0.15 +
+            (part.inDenseRegion ? 0.18 : 0.0));
         part.need.needsGapMove = clamp01(gapScore + wastedSpace * 0.35 + freeAround * 0.15);
         part.need.needsSwap = clamp01(part.need.blocksOthers * 0.55 + neighborDensity * 0.30 + boundaryContribution * 0.15);
         part.need.needsEscape = clamp01((part.hasCollision ? 0.40 : 0.0) + wastedSpace * 0.20 + neighborDensity * 0.15);
@@ -953,6 +987,7 @@ std::vector<PartState> analyzeParts(
             part.need.needsMirror,
             part.need.needsHoleFilling,
             part.need.needsConcavityFitting,
+            part.need.needsContactPacking,
             part.need.needsGapMove,
             part.need.needsSwap,
             part.need.needsEscape,
@@ -1182,17 +1217,92 @@ LayoutState AdaptiveUnifiedOptimizer::optimize(
         FrontierAnalyzer frontierAnalyzer;
         const std::vector<FreeSpaceCandidate> freeSpace = freeAnalyzer.analyze(document, settings, current);
         const std::vector<FrontierCandidate> frontiers = frontierAnalyzer.analyze(document, settings, current);
+        EmptySpaceAnalyzer emptyAnalyzer;
+        const EmptySpaceMap emptyMap = emptyAnalyzer.analyze(document, settings, current);
         std::vector<PartState> partStates = analyzeParts(document, settings, current, cache, freeSpace, frontiers);
-        const std::vector<MoveTask> tasks = buildMoveTasks(
+        std::vector<MoveTask> tasks = buildMoveTasks(
             settings,
             partStates,
             operatorStats_,
             partOperatorBias,
             static_cast<size_t>(std::max(0, convergence.noImprovementSteps)));
+        if (settings.performanceProfile != PerformanceProfile::Fast && step % 10 == 0) {
+            std::vector<const PartState*> smallParts;
+            smallParts.reserve(partStates.size());
+            for (const PartState& part : partStates) {
+                if ((1.0 - part.sizeRank) > 0.45) {
+                    smallParts.push_back(&part);
+                }
+            }
+            std::stable_sort(smallParts.begin(), smallParts.end(), [](const PartState* a, const PartState* b) {
+                const double scoreA = (1.0 - a->sizeRank) * 80.0 +
+                    a->need.needsGapMove * 55.0 +
+                    a->need.needsHoleFilling * 45.0 +
+                    a->need.needsConcavityFitting * 45.0 +
+                    a->need.mobilityScore * 20.0;
+                const double scoreB = (1.0 - b->sizeRank) * 80.0 +
+                    b->need.needsGapMove * 55.0 +
+                    b->need.needsHoleFilling * 45.0 +
+                    b->need.needsConcavityFitting * 45.0 +
+                    b->need.mobilityScore * 20.0;
+                return scoreA > scoreB;
+            });
+            size_t forced = 0;
+            for (const PartState* part : smallParts) {
+                if (forced >= 12u) {
+                    break;
+                }
+                const bool exists = std::any_of(tasks.begin(), tasks.end(), [&](const MoveTask& task) {
+                    return task.partIndex == part->part && task.operatorType == OperatorKind::SmallPartFiller;
+                });
+                if (exists) {
+                    continue;
+                }
+                MoveTask task;
+                task.partIndex = part->part;
+                task.operatorType = OperatorKind::SmallPartFiller;
+                task.estimatedGain = std::max({part->need.needsGapMove, part->need.needsHoleFilling, part->need.needsConcavityFitting, 0.20});
+                task.priority = 420.0 + task.estimatedGain * 140.0 + (1.0 - part->sizeRank) * 70.0;
+                tasks.push_back(task);
+                ++forced;
+            }
+            std::stable_sort(tasks.begin(), tasks.end(), [](const MoveTask& a, const MoveTask& b) {
+                if (std::abs(a.priority - b.priority) > 1e-9) {
+                    return a.priority > b.priority;
+                }
+                if (a.partIndex != b.partIndex) {
+                    return a.partIndex < b.partIndex;
+                }
+                return static_cast<int>(a.operatorType) < static_cast<int>(b.operatorType);
+            });
+            const size_t limit = moveTaskLimit(settings, partStates.size()) + 12u;
+            if (tasks.size() > limit) {
+                tasks.resize(limit);
+            }
+        }
         convergence.highPotentialParts = highPotentialPartCount(partStates);
         convergence.promisingTasks = static_cast<size_t>(std::count_if(tasks.begin(), tasks.end(), [](const MoveTask& task) {
             return task.priority > 70.0 || task.estimatedGain > 0.55;
         }));
+        const double avgSmallArea = std::max(1.0, document.totalPartArea() / std::max<size_t>(1, document.parts.size()) * 0.35);
+        const LayoutShapeMetrics shapeMetrics = computeLayoutShapeMetrics(document, settings, emptyMap.usedBounds);
+        convergence.freeSpacePotential = emptyMap.totalEmptyArea / sheetUsableArea(document, settings);
+        convergence.largeEmptyRegionArea = emptyMap.largestRegionArea;
+        convergence.fillableGapCount = emptyMap.fillableRegionCount(avgSmallArea);
+        convergence.movablePartCount = static_cast<size_t>(std::count_if(partStates.begin(), partStates.end(), [](const PartState& part) {
+            return part.need.mobilityScore > 0.22 || part.need.needsGapMove > 0.35 || part.need.wastedSpaceAround > 0.28;
+        }));
+        convergence.contactOpportunityCount = frontiers.size() + freeSpace.size();
+        convergence.unusedHoleCapacity = static_cast<size_t>(std::count_if(freeSpace.begin(), freeSpace.end(), [](const FreeSpaceCandidate& candidate) {
+            return candidate.kind == FreeSpaceCandidateKind::PartHole;
+        }));
+        stats.emptySpaceArea = emptyMap.totalEmptyArea;
+        stats.largestEmptyRegionArea = emptyMap.largestRegionArea;
+        stats.fillableGapCount = convergence.fillableGapCount;
+        stats.contactCount = static_cast<size_t>(std::llround(std::max(0.0, current.contactReward)));
+        stats.towerScore = shapeMetrics.towerScore;
+        stats.layoutSpreadScore = shapeMetrics.layoutSpreadScore;
+        stats.unusedSheetRegionScore = shapeMetrics.unusedSheetRegionScore;
 
         OperatorContext context{document, settings, cache, freeSpace, frontiers, partStates, static_cast<size_t>(step)};
         std::vector<std::unique_ptr<IOperator>> operators = makeOperators(context);
@@ -1380,9 +1490,27 @@ LayoutState AdaptiveUnifiedOptimizer::optimize(
         const bool repeated = convergence.repeatedLayouts >= 4;
         const bool lowAcceptance = convergence.lowAcceptanceSteps > stagnantThreshold / 2;
         const bool exploredThisStep = summaryTotal(stepActiveMoves) > 0.0;
+        double utilizationTarget = 0.0;
+        if (settings.performanceProfile == PerformanceProfile::Maximum) {
+            utilizationTarget = document.parts.size() >= 400 ? 0.72 :
+                document.parts.size() >= 80 ? 0.65 : 0.0;
+        } else if (settings.performanceProfile == PerformanceProfile::Balanced && document.parts.size() >= 80) {
+            utilizationTarget = 0.65;
+        }
+        const bool belowIndustrialTarget = utilizationTarget > 0.0 && best.utilization + 1e-6 < utilizationTarget;
+        const bool largeEmptyRegion = convergence.largeEmptyRegionArea > avgSmallArea * 3.0 ||
+            convergence.freeSpacePotential > 0.10;
+        const bool fillableGapsRemain = convergence.fillableGapCount > std::max<size_t>(1u, document.parts.size() / 160u);
+        const bool contactOpportunitiesRemain = convergence.contactOpportunityCount > std::max<size_t>(8u, document.parts.size() / 8u);
+        const bool movablePartsRemain = convergence.movablePartCount > std::max<size_t>(4u, document.parts.size() / 80u);
+        const bool towerNeedsRepack = shapeMetrics.towerScore > 0.20 && convergence.fillableGapCount > 0;
+        const bool qualityPotential =
+            belowIndustrialTarget &&
+            (largeEmptyRegion || fillableGapsRemain || contactOpportunitiesRemain || movablePartsRemain || towerNeedsRepack || convergence.unusedHoleCapacity > 0);
         const bool stillHasPotential =
             convergence.highPotentialParts > std::max<size_t>(1u, document.parts.size() / 140u) ||
-            convergence.promisingTasks > std::max<size_t>(2u, tasks.size() / 6u);
+            convergence.promisingTasks > std::max<size_t>(2u, tasks.size() / 6u) ||
+            qualityPotential;
         const bool stronglyStalled =
             convergence.noImprovementSteps > stagnantThreshold * 3 &&
             lowAcceptance &&
@@ -1392,7 +1520,7 @@ LayoutState AdaptiveUnifiedOptimizer::optimize(
              (convergence.noImprovementSteps > stagnantThreshold ||
               (utilizationPlateau && lowAcceptance) ||
               repeated)) ||
-            stronglyStalled) {
+            (stronglyStalled && !qualityPotential)) {
             break;
         }
     }

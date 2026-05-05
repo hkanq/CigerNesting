@@ -109,7 +109,7 @@
     {"part": 79, "x": 328.000000, "y": -524.000000, "angleRadians": 0.000000, "mirrored": false}
   ],
   "score": {
-    "totalScore": 11622.791245,
+    "totalScore": 533824.007094,
     "utilization": 0.492120,
     "usedWidth": 1117.000000,
     "usedHeight": 82.000000,
@@ -119,9 +119,9 @@
     "sheetPenalty": 0.000000
   },
   "stats": {
-    "elapsedMs": 92.800900,
-    "evaluatedCandidates": 5,
-    "candidatesPerSecond": 53.878788,
+    "elapsedMs": 80.006700,
+    "evaluatedCandidates": 8,
+    "candidatesPerSecond": 99.991626,
     "acceptedMoves": 0,
     "acceptedWorseMoves": 0,
     "bestUpdates": 1,
@@ -133,6 +133,19 @@
     "compactionAccepted": 0,
     "frontierCandidates": 0,
     "smallFillerAccepted": 0,
-    "regionRepackAccepted": 0
+    "regionRepackAccepted": 0,
+    "emptySpaceArea": 47260.437970,
+    "largestEmptyRegionArea": 41751.024436,
+    "fillableGapCount": 12,
+    "contactCount": 79,
+    "averageClearance": 2.006633,
+    "slideToContactAccepted": 0,
+    "aggressiveGapAccepted": 0,
+    "localRegionRepackAccepted": 0,
+    "localRegionRepackSubsets": 0,
+    "towerScore": 4.672135,
+    "layoutSpreadScore": 0.329489,
+    "unusedSheetRegionScore": 0.891437,
+    "lowContactPartCount": 0
   }
 }

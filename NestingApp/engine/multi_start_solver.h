@@ -38,6 +38,7 @@ public:
         SolverProgressCallback callback) const;
 
     LayoutState rowBaseline(const Document& document, const EngineSettings& settings, PlacementStrategy strategy, unsigned int seed, int orderMode) const;
+    LayoutState contourSeedBaseline(const Document& document, const EngineSettings& settings, unsigned int seed) const;
     SolverStats lastStats() const { return lastStats_; }
 
 private:

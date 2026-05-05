@@ -53,6 +53,7 @@ struct PartNeed {
     double needsMirror = 0.0;
     double needsHoleFilling = 0.0;
     double needsConcavityFitting = 0.0;
+    double needsContactPacking = 0.0;
     double needsGapMove = 0.0;
     double needsSwap = 0.0;
     double needsEscape = 0.0;
@@ -107,6 +108,12 @@ struct ConvergenceState {
     size_t lastAcceptedMoves = 0;
     size_t highPotentialParts = 0;
     size_t promisingTasks = 0;
+    double freeSpacePotential = 0.0;
+    double largeEmptyRegionArea = 0.0;
+    size_t fillableGapCount = 0;
+    size_t movablePartCount = 0;
+    size_t contactOpportunityCount = 0;
+    size_t unusedHoleCapacity = 0;
 };
 
 class IOperator {

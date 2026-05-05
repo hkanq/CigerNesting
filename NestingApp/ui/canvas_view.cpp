@@ -112,7 +112,11 @@ std::wstring activeMovesText(const SolverSnapshot& snapshot) {
     appendMoveCount(out, first, TextId::Escape, moves.escape);
     appendMoveCount(out, first, TextId::Frontier, moves.frontier);
     if (first) {
-        out << Localization::instance().text(textIdForStrategy(snapshot.currentStrategy));
+        out << Localization::instance().text(TextId::ContactPacking) << L" 0, "
+            << Localization::instance().text(TextId::Compression) << L" 0, "
+            << Localization::instance().text(TextId::UltraRefinement) << L" 0, "
+            << Localization::instance().text(TextId::HoleFilling) << L" 0, "
+            << Localization::instance().text(TextId::Swap) << L" 0";
     }
     return out.str();
 }

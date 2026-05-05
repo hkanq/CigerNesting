@@ -15,11 +15,11 @@ namespace {
 constexpr double kCollisionPenalty = 100000000.0;
 constexpr double kSheetPenalty = 100000000.0;
 constexpr double kSpacingPenalty = 1000000.0;
-constexpr double kUsedAreaPenalty = 1.0;
-constexpr double kUtilizationReward = 10000.0;
+constexpr double kUsedAreaPenalty = 2.40;
+constexpr double kUtilizationReward = 60000.0;
 constexpr double kCompactnessReward = 0.02;
 constexpr double kCavityReward = 500000.0;
-constexpr double kContactReward = 950.0;
+constexpr double kContactReward = 450.0;
 
 double safeSheetArea(const Document& document) {
     return std::max(1.0, (document.sheet.width - document.sheet.margin * 2.0) * (document.sheet.height - document.sheet.margin * 2.0));
@@ -78,9 +78,14 @@ LayoutState LayoutScore::evaluate(
     state.utilization = std::max(0.0, std::min(1.0, document.totalPartArea() / usedArea));
     const double compactness = document.totalPartArea() / usedArea;
     const double cavityReward = cavityPlacementReward(document, poses);
+    const LayoutShapeMetrics shapeMetrics = computeLayoutShapeMetrics(document, settings, used);
+    const double towerPenalty = shapeMetrics.towerScore * std::max(1.0, document.totalPartArea()) * 1.80;
 
     BroadPhase broad;
-    const auto pairs = broad.findCandidatePairs(document.parts, poses, settings.partSpacing);
+    const double contactSearchDistance = settings.performanceProfile == PerformanceProfile::Fast
+        ? settings.partSpacing
+        : std::max(settings.partSpacing, 6.0);
+    const auto pairs = broad.findCandidatePairs(document.parts, poses, contactSearchDistance);
     const ClearanceSettings clearance{settings.partSpacing, settings.margin, settings.collisionTolerance};
 
     for (const auto& [a, b] : pairs) {
@@ -140,7 +145,8 @@ LayoutState LayoutScore::evaluate(
         state.utilization * kUtilizationReward -
         compactness * kCompactnessReward -
         cavityReward * kCavityReward -
-        state.contactReward * kContactReward;
+        state.contactReward * kContactReward +
+        towerPenalty;
 
     return state;
 }
