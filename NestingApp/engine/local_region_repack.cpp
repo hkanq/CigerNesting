@@ -1,5 +1,6 @@
 #include "engine/local_region_repack.h"
 
+#include "engine/analytic_contact_candidate.h"
 #include "engine/empty_space_map.h"
 #include "engine/layout_score.h"
 #include "engine/layout_score_components.h"
@@ -56,6 +57,11 @@ struct CandidateDiagnostics {
     size_t beamPruned = 0;
     size_t fullValidationReject = 0;
     size_t maxCandidatesForPart = 0;
+    size_t analyticGenerated = 0;
+    size_t analyticValid = 0;
+    size_t analyticRejectedCollision = 0;
+    size_t analyticRejectedClearance = 0;
+    size_t analyticRejectedSheet = 0;
 };
 
 double footprint(const Part& part) {
@@ -654,6 +660,44 @@ std::vector<PlacementCandidate> generatePlacementCandidates(
     const size_t effectiveCandidateLimit = smallOrMedium
         ? std::min<size_t>(candidateLimit * 2u, settings.performanceProfile == PerformanceProfile::Maximum ? 36u : 20u)
         : candidateLimit;
+    std::vector<size_t> fixedParts;
+    fixedParts.reserve(std::min(placed.size(), document.parts.size()));
+    for (size_t i = 0; i < placed.size() && i < document.parts.size(); ++i) {
+        if (placed[i] && i != partIndex) {
+            fixedParts.push_back(i);
+        }
+    }
+    {
+        AnalyticContactRequest request;
+        request.movingPart = partIndex;
+        request.fixedParts = fixedParts;
+        request.regionAnchors = anchors;
+        request.angles = angleSamples;
+        request.mirrors = mirrorSamples;
+        request.ownerLimit = settings.performanceProfile == PerformanceProfile::Maximum ? 28u : 14u;
+        request.perOwnerPointLimit = settings.performanceProfile == PerformanceProfile::Maximum ? 8u : 5u;
+        request.candidateLimit = effectiveCandidateLimit * 2u;
+        AnalyticContactStats analyticStats;
+        AnalyticContactCandidateGenerator generator;
+        const std::vector<AnalyticContactCandidate> analytic = generator.generate(document, settings, poses, request, &analyticStats);
+        if (diagnostics) {
+            diagnostics->analyticGenerated += analyticStats.generated;
+            diagnostics->analyticValid += analyticStats.valid;
+            diagnostics->analyticRejectedCollision += analyticStats.rejectedCollision;
+            diagnostics->analyticRejectedClearance += analyticStats.rejectedClearance;
+            diagnostics->analyticRejectedSheet += analyticStats.rejectedSheet;
+        }
+        for (const AnalyticContactCandidate& candidate : analytic) {
+            const double contact = contactScore(document, settings, poses, placed, partIndex, candidate.pose) + candidate.priority * 0.02;
+            PlacementCandidate candidateOut;
+            candidateOut.pose = candidate.pose;
+            candidateOut.contact = contact;
+            candidateOut.localScore = placementScore(document, settings, map, poses, placed, partIndex, candidate.pose, contact);
+            if (appendCandidateIfUnique(out, candidateOut, positionTolerance, angleTolerance) && diagnostics) {
+                ++diagnostics->valid;
+            }
+        }
+    }
 
     for (double angle : angleSamples) {
         for (bool mirrored : mirrorSamples) {
@@ -959,6 +1003,11 @@ void publishDiagnostics(SolverStats* stats, const CandidateDiagnostics& diagnost
     stats->localRegionRepackBeamPruned += diagnostics.beamPruned;
     stats->localRegionRepackFullValidationReject += diagnostics.fullValidationReject;
     stats->localRegionRepackMaxCandidatesForPart = std::max(stats->localRegionRepackMaxCandidatesForPart, diagnostics.maxCandidatesForPart);
+    stats->analyticCandidatesGenerated += diagnostics.analyticGenerated;
+    stats->analyticCandidatesValid += diagnostics.analyticValid;
+    stats->contactCandidatesRejectedCollision += diagnostics.analyticRejectedCollision;
+    stats->contactCandidatesRejectedClearance += diagnostics.analyticRejectedClearance;
+    stats->contactCandidatesRejectedSheet += diagnostics.analyticRejectedSheet;
 }
 
 LayoutState splitTowerToOpenSide(
@@ -1161,9 +1210,12 @@ LayoutState LocalRegionRepack::improve(
                     publishDiagnostics(stats, diagnostics);
                     if (stats) {
                         ++stats->acceptedMoves;
+                        ++stats->activeMoveAcceptedTotal;
                         ++stats->bestUpdates;
                         ++stats->localRegionRepackAccepted;
                         ++stats->regionRepackAccepted;
+                        ++stats->analyticCandidatesAccepted;
+                        ++stats->contourContactAccepted;
                     }
                     return state;
                 }
@@ -1283,9 +1335,12 @@ LayoutState LocalRegionRepack::improve(
                 publishDiagnostics(stats, diagnostics);
                 if (stats) {
                     ++stats->acceptedMoves;
+                    ++stats->activeMoveAcceptedTotal;
                     ++stats->bestUpdates;
                     ++stats->localRegionRepackAccepted;
                     ++stats->regionRepackAccepted;
+                    ++stats->analyticCandidatesAccepted;
+                    ++stats->contourContactAccepted;
                 }
                 return state;
             }

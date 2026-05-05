@@ -1,6 +1,7 @@
 #include "engine/contact_packing.h"
 
 #include "core/math_utils.h"
+#include "engine/analytic_contact_candidate.h"
 #include "engine/layout_eval_cache.h"
 #include "engine/layout_score.h"
 #include "engine/pose_sampler.h"
@@ -167,6 +168,54 @@ LayoutState ContactPacking::improve(
         double bestScore = state.totalScore;
         bool found = false;
 
+        std::vector<size_t> fixedParts;
+        fixedParts.reserve(document.parts.size());
+        for (size_t i = 0; i < document.parts.size(); ++i) {
+            if (i != movingIndex) {
+                fixedParts.push_back(i);
+            }
+        }
+        AnalyticContactRequest request;
+        request.movingPart = movingIndex;
+        request.fixedParts = std::move(fixedParts);
+        request.angles = angleOptions(settings, base);
+        request.mirrors = mirrorOptions(settings, base);
+        request.ownerLimit = ownerLimit;
+        request.perOwnerPointLimit = settings.performanceProfile == PerformanceProfile::Maximum ? 8u : 5u;
+        request.candidateLimit = settings.performanceProfile == PerformanceProfile::Maximum ? 160u : 80u;
+        AnalyticContactStats analyticStats;
+        AnalyticContactCandidateGenerator generator;
+        const std::vector<AnalyticContactCandidate> analyticCandidates = generator.generate(document, settings, state.poses, request, &analyticStats);
+        if (stats) {
+            stats->analyticCandidatesGenerated += analyticStats.generated;
+            stats->analyticCandidatesValid += analyticStats.valid;
+            stats->contactCandidatesRejectedCollision += analyticStats.rejectedCollision;
+            stats->contactCandidatesRejectedClearance += analyticStats.rejectedClearance;
+            stats->contactCandidatesRejectedSheet += analyticStats.rejectedSheet;
+        }
+        for (const AnalyticContactCandidate& candidatePose : analyticCandidates) {
+            if (evaluations >= maxEvaluations || samePose(candidatePose.pose, base)) {
+                break;
+            }
+            const DeltaMove move{movingIndex, base, candidatePose.pose};
+            const DeltaEvaluation delta = evaluateMoveDelta(document, settings, state, cache, move);
+            ++evaluations;
+            if (stats) {
+                ++stats->evaluatedCandidates;
+            }
+            if (!delta.valid) {
+                classifyRejected(delta, stats);
+                continue;
+            }
+            if (delta.totalScore + 1e-9 < bestScore) {
+                bestScore = delta.totalScore;
+                bestPose = candidatePose.pose;
+                found = true;
+            } else if (stats) {
+                ++stats->contactCandidatesRejectedScore;
+            }
+        }
+
         for (double angle : angleOptions(settings, base)) {
             for (bool mirrored : mirrorOptions(settings, base)) {
                 Pose orientation;
@@ -243,7 +292,10 @@ LayoutState ContactPacking::improve(
             transformed[movingIndex] = transformPart(document.parts[movingIndex], state.poses[movingIndex], static_cast<int>(movingIndex));
             if (stats) {
                 ++stats->acceptedMoves;
+                ++stats->activeMoveAcceptedTotal;
                 ++stats->bestUpdates;
+                ++stats->analyticCandidatesAccepted;
+                ++stats->contourContactAccepted;
             }
         }
     }

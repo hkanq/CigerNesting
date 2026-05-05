@@ -119,6 +119,15 @@ struct SolverStats {
     size_t localRegionRepackBeamPruned = 0;
     size_t localRegionRepackFullValidationReject = 0;
     size_t localRegionRepackMaxCandidatesForPart = 0;
+    size_t analyticCandidatesGenerated = 0;
+    size_t analyticCandidatesValid = 0;
+    size_t analyticCandidatesAccepted = 0;
+    size_t contactCandidatesRejectedCollision = 0;
+    size_t contactCandidatesRejectedClearance = 0;
+    size_t contactCandidatesRejectedSheet = 0;
+    size_t contactCandidatesRejectedScore = 0;
+    size_t contourContactAccepted = 0;
+    size_t activeMoveAcceptedTotal = 0;
     double towerScore = 0.0;
     double layoutSpreadScore = 0.0;
     double unusedSheetRegionScore = 0.0;

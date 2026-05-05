@@ -1,5 +1,6 @@
 #include "engine/multi_start_solver.h"
 
+#include "engine/analytic_contact_candidate.h"
 #include "core/math_utils.h"
 #include "engine/adaptive_optimizer.h"
 #include "engine/aggressive_gap_filler.h"
@@ -268,6 +269,15 @@ void mergeStats(SolverStats& target, const SolverStats& source) {
     target.localRegionRepackBeamPruned += source.localRegionRepackBeamPruned;
     target.localRegionRepackFullValidationReject += source.localRegionRepackFullValidationReject;
     target.localRegionRepackMaxCandidatesForPart = std::max(target.localRegionRepackMaxCandidatesForPart, source.localRegionRepackMaxCandidatesForPart);
+    target.analyticCandidatesGenerated += source.analyticCandidatesGenerated;
+    target.analyticCandidatesValid += source.analyticCandidatesValid;
+    target.analyticCandidatesAccepted += source.analyticCandidatesAccepted;
+    target.contactCandidatesRejectedCollision += source.contactCandidatesRejectedCollision;
+    target.contactCandidatesRejectedClearance += source.contactCandidatesRejectedClearance;
+    target.contactCandidatesRejectedSheet += source.contactCandidatesRejectedSheet;
+    target.contactCandidatesRejectedScore += source.contactCandidatesRejectedScore;
+    target.contourContactAccepted += source.contourContactAccepted;
+    target.activeMoveAcceptedTotal += source.activeMoveAcceptedTotal;
     target.towerScore = std::max(target.towerScore, source.towerScore);
     target.layoutSpreadScore = std::max(target.layoutSpreadScore, source.layoutSpreadScore);
     target.unusedSheetRegionScore = std::max(target.unusedSheetRegionScore, source.unusedSheetRegionScore);

@@ -1,6 +1,7 @@
 #include "engine/adaptive_optimizer.h"
 
 #include "core/math_utils.h"
+#include "engine/analytic_contact_candidate.h"
 #include "engine/convergence.h"
 #include "engine/empty_space_map.h"
 #include "engine/free_space_analyzer.h"
@@ -290,9 +291,20 @@ public:
             return;
         }
         const Pose base = state.poses[part.part];
-        const size_t sampleStride = context_.document.parts.size() > 120 ? 4u : 2u;
-        const std::vector<double> angles = limitedAngles(context_.settings, base, part.rotationSensitive ? 4u : 1u);
-        const std::vector<bool> mirrors = mirrorOptions(context_.settings, base, part.mirrorSensitive);
+        std::vector<double> angles = limitedAngles(context_.settings, base, part.rotationSensitive ? 8u : 4u);
+        if (context_.settings.performanceProfile == PerformanceProfile::Maximum && context_.settings.allowRotation) {
+            const double staples[] = {0.0, 90.0, 180.0, 270.0, 45.0, 135.0, 225.0, 315.0};
+            for (double degrees : staples) {
+                const double angle = degreesToRadians(degrees);
+                if (std::none_of(angles.begin(), angles.end(), [&](double existing) { return std::abs(existing - angle) < 1e-9; })) {
+                    angles.push_back(angle);
+                }
+            }
+            const double step = degreesToRadians(std::max(0.001, context_.settings.rotationStepDegrees));
+            angles.push_back(base.angleRadians + step);
+            angles.push_back(base.angleRadians - step);
+        }
+        const std::vector<bool> mirrors = mirrorOptions(context_.settings, base, true);
         std::vector<size_t> owners = context_.cache.queryNeighbors(context_.cache.partBounds()[part.part].expanded(std::max(8.0, context_.settings.partSpacing + 8.0)), part.part);
         if (owners.empty()) {
             for (size_t i = 0; i < context_.document.parts.size() && owners.size() < 8; ++i) {
@@ -301,41 +313,45 @@ public:
                 }
             }
         }
-        const size_t ownerLimit = context_.settings.performanceProfile == PerformanceProfile::Maximum ? 8u : 5u;
-        const size_t pointLimit = context_.settings.performanceProfile == PerformanceProfile::Maximum ? 8u : 5u;
-        for (double angle : angles) {
-            for (bool mirrored : mirrors) {
-                Pose orientation;
-                orientation.angleRadians = angle;
-                orientation.mirrored = mirrored;
-                const TransformedPart moving = transformPart(context_.document.parts[part.part], orientation, static_cast<int>(part.part));
-                std::vector<Vec2> movingPoints;
-                for (const TransformedRing& ring : moving.rings) {
-                    std::vector<Vec2> sampled = sampleRingPoints(ring, sampleStride, pointLimit);
-                    movingPoints.insert(movingPoints.end(), sampled.begin(), sampled.end());
+        for (const FreeSpaceCandidate& free : context_.freeSpace) {
+            if (free.sourcePart != part.part && free.priority >= 50.0) {
+                owners.push_back(free.sourcePart);
+            }
+        }
+        owners.erase(std::remove_if(owners.begin(), owners.end(), [&](size_t owner) {
+            return owner == part.part || owner >= context_.document.parts.size();
+        }), owners.end());
+        std::sort(owners.begin(), owners.end());
+        owners.erase(std::unique(owners.begin(), owners.end()), owners.end());
+
+        std::vector<Vec2> regionAnchors;
+        for (const FreeSpaceCandidate& free : context_.freeSpace) {
+            if (free.sourcePart != part.part &&
+                (free.kind == FreeSpaceCandidateKind::PartHole ||
+                 free.kind == FreeSpaceCandidateKind::Concavity ||
+                 free.kind == FreeSpaceCandidateKind::UsedBoundsGap)) {
+                regionAnchors.push_back(free.anchor);
+                if (regionAnchors.size() >= 24u) {
+                    break;
                 }
-                for (size_t oi = 0; oi < owners.size() && oi < ownerLimit; ++oi) {
-                    const size_t owner = owners[oi];
-                    if (owner >= context_.cache.transformedParts().size()) {
-                        continue;
-                    }
-                    for (const TransformedRing& ownerRing : context_.cache.transformedParts()[owner].rings) {
-                        const std::vector<Vec2> ownerPoints = sampleRingPoints(ownerRing, sampleStride, pointLimit);
-                        for (Vec2 ownerPoint : ownerPoints) {
-                            for (Vec2 movingPoint : movingPoints) {
-                                Pose pose;
-                                pose.angleRadians = angle;
-                                pose.mirrored = mirrored;
-                                pose.x = ownerPoint.x - movingPoint.x;
-                                pose.y = ownerPoint.y - movingPoint.y;
-                                appendCandidate(out, part.part, pose, kind());
-                                if (out.size() > 80) {
-                                    return;
-                                }
-                            }
-                        }
-                    }
-                }
+            }
+        }
+
+        AnalyticContactRequest request;
+        request.movingPart = part.part;
+        request.fixedParts = std::move(owners);
+        request.regionAnchors = std::move(regionAnchors);
+        request.angles = std::move(angles);
+        request.mirrors = mirrors;
+        request.ownerLimit = context_.settings.performanceProfile == PerformanceProfile::Maximum ? 24u : 12u;
+        request.perOwnerPointLimit = context_.settings.performanceProfile == PerformanceProfile::Maximum ? 8u : 5u;
+        request.candidateLimit = context_.settings.performanceProfile == PerformanceProfile::Maximum ? 96u : 48u;
+        AnalyticContactCandidateGenerator generator;
+        const std::vector<AnalyticContactCandidate> generated = generator.generate(context_.document, context_.settings, state.poses, request);
+        for (const AnalyticContactCandidate& candidate : generated) {
+            appendCandidate(out, part.part, candidate.pose, kind(), candidate.priority);
+            if (out.size() >= 96u) {
+                break;
             }
         }
     }
@@ -1069,6 +1085,7 @@ void classifyRejected(const MultiDeltaEvaluation& evaluation, SolverStats& stats
 
 void recordAccepted(OperatorKind kind, SolverStats& stats) {
     ++stats.acceptedMoves;
+    ++stats.activeMoveAcceptedTotal;
     incrementSummary(stats.acceptedMoveSummary, kind);
     switch (kind) {
     case OperatorKind::Compression:
@@ -1078,6 +1095,9 @@ void recordAccepted(OperatorKind kind, SolverStats& stats) {
     case OperatorKind::HoleFilling:
     case OperatorKind::ConcavityFilling:
     case OperatorKind::ContactPacking:
+        ++stats.contourContactAccepted;
+        ++stats.analyticCandidatesAccepted;
+        [[fallthrough]];
     case OperatorKind::Frontier:
         ++stats.gapAccepted;
         break;
@@ -1320,7 +1340,7 @@ LayoutState AdaptiveUnifiedOptimizer::optimize(
         bool foundMove = false;
         bool acceptedWorse = false;
         double bestCandidateScore = std::numeric_limits<double>::max();
-        ActiveMoveSummary stepActiveMoves;
+            ActiveMoveSummary stepActiveMoves;
 
         for (const MoveTask& task : tasks) {
             if (timeExpired() || stopRequested.load()) {
@@ -1340,6 +1360,10 @@ LayoutState AdaptiveUnifiedOptimizer::optimize(
             incrementSummary(stepActiveMoves, task.operatorType);
             std::vector<CandidateMove> candidates;
             op->generateCandidates(current, target, candidates);
+            if (task.operatorType == OperatorKind::ContactPacking) {
+                stats.analyticCandidatesGenerated += candidates.size();
+                stats.analyticCandidatesValid += candidates.size();
+            }
             const size_t baseBudget = operatorBudget(settings, operatorStats_[task.operatorType]);
             const size_t taskBudget = std::max<size_t>(2, std::min<size_t>(baseBudget + static_cast<size_t>(task.estimatedGain * 4.0), 24u));
             if (candidates.size() > taskBudget) {
@@ -1374,6 +1398,15 @@ LayoutState AdaptiveUnifiedOptimizer::optimize(
                     deltaScore = delta.totalScore;
                     if (!delta.valid) {
                         classifyRejected(delta, stats);
+                        if (candidate.source == OperatorKind::ContactPacking) {
+                            if (delta.collisionCount > 0) {
+                                ++stats.contactCandidatesRejectedCollision;
+                            } else if (delta.spacingPenalty > 0.0) {
+                                ++stats.contactCandidatesRejectedClearance;
+                            } else if (delta.invalidPartCount > 0 || delta.sheetPenalty > 0.0) {
+                                ++stats.contactCandidatesRejectedSheet;
+                            }
+                        }
                         if (!forceFullCavityCheck) {
                             continue;
                         }
@@ -1388,6 +1421,15 @@ LayoutState AdaptiveUnifiedOptimizer::optimize(
                     deltaScore = delta.totalScore;
                     if (!delta.valid) {
                         classifyRejected(delta, stats);
+                        if (candidate.source == OperatorKind::ContactPacking) {
+                            if (delta.collisionCount > 0) {
+                                ++stats.contactCandidatesRejectedCollision;
+                            } else if (delta.spacingPenalty > 0.0) {
+                                ++stats.contactCandidatesRejectedClearance;
+                            } else if (delta.invalidPartCount > 0 || delta.sheetPenalty > 0.0) {
+                                ++stats.contactCandidatesRejectedSheet;
+                            }
+                        }
                         if (!forceFullCavityCheck) {
                             continue;
                         }
@@ -1403,6 +1445,9 @@ LayoutState AdaptiveUnifiedOptimizer::optimize(
                 }
                 if (deltaValid && improvement <= 1e-9 && !allowWorse && !forceFullCavityCheck) {
                     ++stats.rejectedWorseMoves;
+                    if (candidate.source == OperatorKind::ContactPacking) {
+                        ++stats.contactCandidatesRejectedScore;
+                    }
                     continue;
                 }
 
@@ -1418,6 +1463,9 @@ LayoutState AdaptiveUnifiedOptimizer::optimize(
                 }
                 LayoutState verified = scorer.evaluate(document, settings, poses, &attemptPenalties, &globalPenalties, 0.10);
                 if (!verified.valid()) {
+                    if (candidate.source == OperatorKind::ContactPacking) {
+                        ++stats.contactCandidatesRejectedSheet;
+                    }
                     continue;
                 }
                 const double verifiedImprovement = current.totalScore - verified.totalScore;
