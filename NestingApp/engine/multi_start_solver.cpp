@@ -9,6 +9,7 @@
 #include "engine/empty_space_map.h"
 #include "engine/contact_packing.h"
 #include "engine/convergence.h"
+#include "engine/destroy_rebuild.h"
 #include "engine/escape_search.h"
 #include "engine/gap_filling.h"
 #include "engine/layout_score.h"
@@ -278,6 +279,25 @@ void mergeStats(SolverStats& target, const SolverStats& source) {
     target.contactCandidatesRejectedScore += source.contactCandidatesRejectedScore;
     target.contourContactAccepted += source.contourContactAccepted;
     target.activeMoveAcceptedTotal += source.activeMoveAcceptedTotal;
+    target.acceptedBetter += source.acceptedBetter;
+    target.acceptedTemporary += source.acceptedTemporary;
+    target.rejectedByScore += source.rejectedByScore;
+    target.rejectedByAcceptance += source.rejectedByAcceptance;
+    target.destroyAttempts += source.destroyAttempts;
+    target.destroyAccepted += source.destroyAccepted;
+    target.destroyTemporaryAccepted += source.destroyTemporaryAccepted;
+    target.destroyBestUpdates += source.destroyBestUpdates;
+    target.destroySubsetTotal += source.destroySubsetTotal;
+    target.beamNodesExpanded += source.beamNodesExpanded;
+    target.beamValidLeaves += source.beamValidLeaves;
+    if (target.destroyAttempts > 0) {
+        target.averageSubsetSize = static_cast<double>(target.destroySubsetTotal) / static_cast<double>(target.destroyAttempts);
+    }
+    const size_t acceptedTotal = target.acceptedMoves;
+    const size_t rejectedTotal = target.rejectedByAcceptance + target.rejectedWorseMoves + target.rejectedByScore;
+    if (acceptedTotal + rejectedTotal > 0) {
+        target.acceptanceRate = static_cast<double>(acceptedTotal) / static_cast<double>(acceptedTotal + rejectedTotal);
+    }
     target.towerScore = std::max(target.towerScore, source.towerScore);
     target.layoutSpreadScore = std::max(target.layoutSpreadScore, source.layoutSpreadScore);
     target.unusedSheetRegionScore = std::max(target.unusedSheetRegionScore, source.unusedSheetRegionScore);
@@ -1013,6 +1033,30 @@ LayoutState MultiStartSolver::solve(
         callback(solverProgress);
     });
     best = qualityBetterLayout(optimized, bestBeforeAdaptive) ? std::move(optimized) : std::move(bestBeforeAdaptive);
+
+    if (!stopRequested.load() && settings.performanceProfile != PerformanceProfile::Fast) {
+        DestroyRebuild destroyRebuild;
+        LayoutState improved = destroyRebuild.improve(document, settings, best, stopRequested, &aggregateStats);
+        if (improved.valid() && qualityBetterLayout(improved, best)) {
+            best = std::move(improved);
+            if (callback) {
+                SolverProgress solverProgress;
+                solverProgress.phase = SolverPhase::Rearrangement;
+                solverProgress.currentStrategy = SolverStrategy::RegionRepack;
+                solverProgress.progress = 0.93;
+                solverProgress.current = best;
+                solverProgress.best = best;
+                solverProgress.elapsedSeconds = elapsedSeconds(started);
+                solverProgress.stats = aggregateStats;
+                solverProgress.activeMoves.region = aggregateStats.destroyAccepted;
+                solverProgress.versionId = aggregateStats.bestUpdates + 2;
+                solverProgress.layoutChanged = true;
+                solverProgress.lastMoveStrategy = SolverStrategy::RegionRepack;
+                solverProgress.bestUpdated = true;
+                callback(solverProgress);
+            }
+        }
+    }
 
     if (!stopRequested.load() && settings.performanceProfile != PerformanceProfile::Fast) {
         LocalRegionRepack localRepack;

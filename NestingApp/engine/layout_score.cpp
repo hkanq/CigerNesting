@@ -79,7 +79,25 @@ LayoutState LayoutScore::evaluate(
     const double compactness = document.totalPartArea() / usedArea;
     const double cavityReward = cavityPlacementReward(document, poses);
     const LayoutShapeMetrics shapeMetrics = computeLayoutShapeMetrics(document, settings, used);
-    const double towerPenalty = shapeMetrics.towerScore * std::max(1.0, document.totalPartArea()) * 1.80;
+    const bool qualityProfile = settings.performanceProfile != PerformanceProfile::Fast;
+    const double totalPartArea = std::max(1.0, document.totalPartArea());
+    const double usedAreaWeight = qualityProfile ? 1.85 : kUsedAreaPenalty;
+    const double utilizationReward = settings.performanceProfile == PerformanceProfile::Maximum
+        ? 115000.0
+        : (qualityProfile ? 85000.0 : kUtilizationReward);
+    const double cavityWeight = settings.performanceProfile == PerformanceProfile::Maximum
+        ? 900000.0
+        : (qualityProfile ? 700000.0 : kCavityReward);
+    const double contactWeight = settings.performanceProfile == PerformanceProfile::Maximum
+        ? 1050.0
+        : (qualityProfile ? 760.0 : kContactReward);
+    const double towerWeight = settings.performanceProfile == PerformanceProfile::Maximum
+        ? 4.2
+        : (qualityProfile ? 2.8 : 1.80);
+    const double spreadPenalty = qualityProfile
+        ? shapeMetrics.unusedSheetRegionScore * totalPartArea * 0.45
+        : 0.0;
+    const double towerPenalty = shapeMetrics.towerScore * totalPartArea * towerWeight;
 
     BroadPhase broad;
     const double contactSearchDistance = settings.performanceProfile == PerformanceProfile::Fast
@@ -141,12 +159,13 @@ LayoutState LayoutScore::evaluate(
         static_cast<double>(state.invalidPartCount) * kSheetPenalty +
         state.sheetPenalty * kSheetPenalty +
         state.spacingPenalty * kSpacingPenalty +
-        usedArea * kUsedAreaPenalty -
-        state.utilization * kUtilizationReward -
+        usedArea * usedAreaWeight -
+        state.utilization * utilizationReward -
         compactness * kCompactnessReward -
-        cavityReward * kCavityReward -
-        state.contactReward * kContactReward +
-        towerPenalty;
+        cavityReward * cavityWeight -
+        state.contactReward * contactWeight +
+        towerPenalty +
+        spreadPenalty;
 
     return state;
 }

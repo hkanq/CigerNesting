@@ -1,6 +1,7 @@
 #include "engine/adaptive_optimizer.h"
 
 #include "core/math_utils.h"
+#include "engine/adaptive_acceptance.h"
 #include "engine/analytic_contact_candidate.h"
 #include "engine/convergence.h"
 #include "engine/empty_space_map.h"
@@ -1200,6 +1201,7 @@ LayoutState AdaptiveUnifiedOptimizer::optimize(
     }
 
     LayoutState best = current;
+    AdaptiveAcceptance acceptance(settings);
     ConvergenceState convergence;
     convergence.lastBestScore = best.totalScore;
     convergence.lastAcceptedMoves = stats.acceptedMoves;
@@ -1339,11 +1341,13 @@ LayoutState AdaptiveUnifiedOptimizer::optimize(
         LayoutState bestMoveState;
         bool foundMove = false;
         bool acceptedWorse = false;
+        bool acceptedTemporary = false;
+        bool commitEarly = false;
         double bestCandidateScore = std::numeric_limits<double>::max();
-            ActiveMoveSummary stepActiveMoves;
+        ActiveMoveSummary stepActiveMoves;
 
         for (const MoveTask& task : tasks) {
-            if (timeExpired() || stopRequested.load()) {
+            if (timeExpired() || stopRequested.load() || commitEarly) {
                 break;
             }
             if (task.partIndex >= partStates.size()) {
@@ -1371,7 +1375,7 @@ LayoutState AdaptiveUnifiedOptimizer::optimize(
             }
 
             for (CandidateMove& candidate : candidates) {
-                if (stopRequested.load() || timeExpired()) {
+                if (stopRequested.load() || timeExpired() || commitEarly) {
                     break;
                 }
                 ++operatorStats_[candidate.source].attempts;
@@ -1443,8 +1447,10 @@ LayoutState AdaptiveUnifiedOptimizer::optimize(
                 if (!deltaValid && !forceFullCavityCheck) {
                     continue;
                 }
-                if (deltaValid && improvement <= 1e-9 && !allowWorse && !forceFullCavityCheck) {
+                if (settings.performanceProfile == PerformanceProfile::Fast &&
+                    deltaValid && improvement <= 1e-9 && !allowWorse && !forceFullCavityCheck) {
                     ++stats.rejectedWorseMoves;
+                    ++stats.rejectedByScore;
                     if (candidate.source == OperatorKind::ContactPacking) {
                         ++stats.contactCandidatesRejectedScore;
                     }
@@ -1470,13 +1476,55 @@ LayoutState AdaptiveUnifiedOptimizer::optimize(
                 }
                 const double verifiedImprovement = current.totalScore - verified.totalScore;
                 const bool improvesCurrent = verifiedImprovement > 1e-9;
-                if ((improvesCurrent && verified.totalScore + 1e-9 < bestCandidateScore) || (!foundMove && allowWorse)) {
+                bool temporaryAccepted = false;
+                bool acceptedByModel = improvesCurrent || allowWorse;
+                if (!improvesCurrent && !allowWorse) {
+                    AdaptiveAcceptanceContext acceptanceContext;
+                    acceptanceContext.currentScore = current.totalScore;
+                    acceptanceContext.candidateScore = verified.totalScore;
+                    acceptanceContext.bestScore = best.totalScore;
+                    acceptanceContext.emptySpacePotential = convergence.freeSpacePotential;
+                    acceptanceContext.contactPotential = std::clamp(task.estimatedGain, 0.0, 1.5) +
+                        (candidate.source == OperatorKind::ContactPacking ? 0.75 : 0.0) +
+                        (candidate.source == OperatorKind::HoleFilling || candidate.source == OperatorKind::ConcavityFilling ? 0.45 : 0.0);
+                    acceptanceContext.destroyRebuildMove = candidate.isMultiPart();
+                    acceptanceContext.iteration = step;
+                    acceptanceContext.maxIterations = std::max(1, maxStepCount);
+                    acceptanceContext.seed = settings.randomSeed == 0u ? 1u : settings.randomSeed;
+                    acceptanceContext.candidateIndex = stats.evaluatedCandidates;
+                    const AdaptiveAcceptanceDecision decision = acceptance.decide(acceptanceContext);
+                    acceptedByModel = decision.accepted;
+                    temporaryAccepted = decision.temporary || decision.acceptedWorse || decision.accepted;
+                    if (!acceptedByModel) {
+                        ++stats.rejectedByAcceptance;
+                        ++stats.rejectedWorseMoves;
+                        if (candidate.source == OperatorKind::ContactPacking) {
+                            ++stats.contactCandidatesRejectedScore;
+                        }
+                        continue;
+                    }
+                } else if (!improvesCurrent) {
+                    temporaryAccepted = true;
+                }
+
+                const bool candidateIsTemporary = !improvesCurrent && temporaryAccepted;
+                bool shouldSelect = false;
+                if (improvesCurrent) {
+                    shouldSelect = acceptedTemporary || verified.totalScore + 1e-9 < bestCandidateScore;
+                } else if (!foundMove) {
+                    shouldSelect = true;
+                } else if (acceptedTemporary && verified.totalScore + 1e-9 < bestCandidateScore) {
+                    shouldSelect = true;
+                }
+                if (acceptedByModel && shouldSelect) {
                     bestCandidateScore = verified.totalScore;
                     bestMoveState = std::move(verified);
                     bestMove = std::move(candidate);
                     foundMove = true;
-                    acceptedWorse = bestMoveState.totalScore > current.totalScore + 1e-9;
+                    acceptedTemporary = candidateIsTemporary;
+                    acceptedWorse = candidateIsTemporary && bestMoveState.totalScore > current.totalScore + 1e-9;
                     currentStrategy = strategyForOperator(bestMove.source);
+                    commitEarly = candidateIsTemporary && settings.performanceProfile != PerformanceProfile::Fast;
                 }
             }
         }
@@ -1493,6 +1541,11 @@ LayoutState AdaptiveUnifiedOptimizer::optimize(
             const uint64_t acceptedKey = partOperatorKey(bestMove.part, bestMove.source);
             const double currentBias = partOperatorBias.count(acceptedKey) != 0 ? partOperatorBias[acceptedKey] : 1.0;
             partOperatorBias[acceptedKey] = std::min(2.5, currentBias + 0.25);
+            if (acceptedTemporary) {
+                ++stats.acceptedTemporary;
+            } else {
+                ++stats.acceptedBetter;
+            }
             if (acceptedWorse) {
                 ++stats.acceptedWorseMoves;
             }
@@ -1571,6 +1624,12 @@ LayoutState AdaptiveUnifiedOptimizer::optimize(
             (stronglyStalled && !qualityPotential)) {
             break;
         }
+    }
+
+    const size_t acceptedTotal = stats.acceptedMoves;
+    const size_t rejectedTotal = stats.rejectedByAcceptance + stats.rejectedWorseMoves + stats.rejectedByScore;
+    if (acceptedTotal + rejectedTotal > 0) {
+        stats.acceptanceRate = static_cast<double>(acceptedTotal) / static_cast<double>(acceptedTotal + rejectedTotal);
     }
 
     LayoutState finalBest = scorer.evaluate(document, settings, best.poses, &attemptPenalties, &globalPenalties, 0.10);
