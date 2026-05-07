@@ -9,6 +9,7 @@
 
 namespace nest {
 
+// Legacy local rearrangement helper. Multi-part constructive search is centralized in ConstructiveRebuildEngine.
 class Rearrangement {
 public:
     LayoutState improve(

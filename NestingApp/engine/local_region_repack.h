@@ -8,6 +8,8 @@
 
 namespace nest {
 
+// Deprecated main-path module: kept as a diagnostic/test-only helper.
+// Production Balanced/Maximum search now routes region rebuild decisions through ConstructiveRebuildEngine.
 class LocalRegionRepack {
 public:
     LayoutState improve(

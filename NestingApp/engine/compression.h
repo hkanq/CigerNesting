@@ -10,6 +10,7 @@
 
 namespace nest {
 
+// Legacy local compaction helper. In Balanced/Maximum it is a micro-correction tool, not the main placement strategy.
 class Compression {
 public:
     void compressLeftUp(const Document& document, const EngineSettings& settings, std::vector<Pose>& poses) const;

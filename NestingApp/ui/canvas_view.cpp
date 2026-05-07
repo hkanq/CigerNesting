@@ -1,6 +1,7 @@
 #include "ui/canvas_view.h"
 
 #include "core/math_utils.h"
+#include "geometry/transformed_shape.h"
 #include "localization/localization.h"
 #include "render/gdi_renderer.h"
 #include <windowsx.h>
@@ -152,11 +153,51 @@ void CanvasView::setSnapshot(const SolverSnapshot& snapshot) {
         std::abs(snapshot.utilization - snapshot_.utilization) < 1e-9) {
         return;
     }
+    if (hwnd_) {
+        RECT dirty{};
+        bool hasDirty = false;
+        if (document_ && hasSnapshot_ && snapshot.layoutChanged && !snapshot.changedParts.empty()) {
+            auto displayPoses = [&](const SolverSnapshot& value) -> const std::vector<Pose>* {
+                if (value.layoutChanged && value.currentPoses.size() == document_->parts.size()) {
+                    return &value.currentPoses;
+                }
+                if (value.bestPoses.size() == document_->parts.size()) {
+                    return &value.bestPoses;
+                }
+                if (value.currentPoses.size() == document_->parts.size()) {
+                    return &value.currentPoses;
+                }
+                return nullptr;
+            };
+            const std::vector<Pose>* oldPoses = displayPoses(snapshot_);
+            const std::vector<Pose>* newPoses = displayPoses(snapshot);
+            AABB dirtyBounds;
+            if (oldPoses && newPoses) {
+                for (size_t index : snapshot.changedParts) {
+                    if (index >= document_->parts.size() || index >= oldPoses->size() || index >= newPoses->size()) {
+                        continue;
+                    }
+                    dirtyBounds.include(transformedBounds(document_->parts[index], (*oldPoses)[index]));
+                    dirtyBounds.include(transformedBounds(document_->parts[index], (*newPoses)[index]));
+                }
+            }
+            if (dirtyBounds.isValid()) {
+                const Vec2 a = worldToScreen(dirtyBounds.min);
+                const Vec2 b = worldToScreen(dirtyBounds.max);
+                dirty.left = static_cast<LONG>(std::floor(std::min(a.x, b.x))) - 16;
+                dirty.top = static_cast<LONG>(std::floor(std::min(a.y, b.y))) - 16;
+                dirty.right = static_cast<LONG>(std::ceil(std::max(a.x, b.x))) + 16;
+                dirty.bottom = static_cast<LONG>(std::ceil(std::max(a.y, b.y))) + 16;
+                hasDirty = true;
+            }
+        }
+        snapshot_ = snapshot;
+        hasSnapshot_ = !snapshot.currentPoses.empty() || !snapshot.bestPoses.empty();
+        InvalidateRect(hwnd_, hasDirty ? &dirty : nullptr, FALSE);
+        return;
+    }
     snapshot_ = snapshot;
     hasSnapshot_ = !snapshot.currentPoses.empty() || !snapshot.bestPoses.empty();
-    if (hwnd_) {
-        InvalidateRect(hwnd_, nullptr, FALSE);
-    }
 }
 
 void CanvasView::clearSnapshot() {
@@ -290,7 +331,9 @@ void CanvasView::drawDocument(IRenderer& renderer) {
     renderer.strokeRect({sheetA.x, sheetA.y, sheetB.x - sheetA.x, sheetB.y - sheetA.y}, {54, 66, 74, 255}, 2.0);
 
     const std::vector<Pose>* poses = nullptr;
-    if (hasSnapshot_ && snapshot_.bestPoses.size() == document_->parts.size()) {
+    if (hasSnapshot_ && snapshot_.layoutChanged && snapshot_.currentPoses.size() == document_->parts.size()) {
+        poses = &snapshot_.currentPoses;
+    } else if (hasSnapshot_ && snapshot_.bestPoses.size() == document_->parts.size()) {
         poses = &snapshot_.bestPoses;
     } else if (hasSnapshot_ && snapshot_.currentPoses.size() == document_->parts.size()) {
         poses = &snapshot_.currentPoses;
@@ -306,7 +349,9 @@ void CanvasView::drawDocument(IRenderer& renderer) {
             for (const auto& point : ring.points) {
                 screenPoints.push_back(worldToScreen(transform.apply(point)));
             }
-            const bool movedPart = hasSnapshot_ && snapshot_.lastMovedPart == i && snapshot_.layoutChanged;
+            const bool subsetMoved = hasSnapshot_ && snapshot_.layoutChanged &&
+                std::find(snapshot_.changedParts.begin(), snapshot_.changedParts.end(), i) != snapshot_.changedParts.end();
+            const bool movedPart = hasSnapshot_ && snapshot_.layoutChanged && (snapshot_.lastMovedPart == i || subsetMoved);
             const Color stroke = movedPart ? Color{220, 74, 42, 255} : Color{32, 68, 74, 255};
             const double strokeWidth = movedPart ? 3.0 : 1.5;
             if (ring.points.size() >= 3 && ring.closed()) {

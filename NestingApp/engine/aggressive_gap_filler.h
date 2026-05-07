@@ -8,6 +8,7 @@
 
 namespace nest {
 
+// Deprecated main-path module: ConstructiveRebuildEngine owns empty-region targeting in production search.
 class AggressiveGapFiller {
 public:
     LayoutState improve(

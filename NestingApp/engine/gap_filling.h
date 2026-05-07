@@ -10,6 +10,7 @@
 
 namespace nest {
 
+// Legacy single-part gap pass. Kept for tests and helper use; not a post-pass in the main solver path.
 struct GapFillingStats {
     size_t generatedAnchors = 0;
     size_t evaluatedCandidates = 0;

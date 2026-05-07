@@ -157,6 +157,30 @@ std::wstring makeFileFilter() {
     return filter;
 }
 
+void attachMainMenu(HWND hwnd) {
+    const auto& loc = Localization::instance();
+    HMENU mainMenu = CreateMenu();
+    HMENU fileMenu = CreatePopupMenu();
+    HMENU integrationMenu = CreatePopupMenu();
+    HMENU settingsMenu = CreatePopupMenu();
+
+    AppendMenuW(fileMenu, MF_STRING, uiid::buttonOpen, loc.text(TextId::FileOpen));
+    AppendMenuW(fileMenu, MF_STRING, uiid::buttonSave, loc.text(TextId::Save));
+    AppendMenuW(integrationMenu, MF_STRING, uiid::buttonCorelConnect, loc.text(TextId::CorelConnection));
+    AppendMenuW(integrationMenu, MF_STRING, uiid::buttonCorelExport, loc.text(TextId::ExportToCorel));
+
+    std::wstring autoLimit = std::wstring(loc.text(TextId::TimeLimitSeconds)) + L": 0 / Auto Convergence";
+    AppendMenuW(settingsMenu, MF_STRING | MF_DISABLED, 0, autoLimit.c_str());
+    AppendMenuW(settingsMenu, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(settingsMenu, MF_STRING | MF_DISABLED, 0, loc.text(TextId::ThreadMaximum));
+    AppendMenuW(settingsMenu, MF_STRING | MF_DISABLED, 0, loc.text(TextId::MaxQuality));
+
+    AppendMenuW(mainMenu, MF_POPUP, reinterpret_cast<UINT_PTR>(fileMenu), loc.text(TextId::FileMenu));
+    AppendMenuW(mainMenu, MF_POPUP, reinterpret_cast<UINT_PTR>(integrationMenu), loc.text(TextId::Integrations));
+    AppendMenuW(mainMenu, MF_POPUP, reinterpret_cast<UINT_PTR>(settingsMenu), loc.text(TextId::Settings));
+    SetMenu(hwnd, mainMenu);
+}
+
 } // namespace
 
 bool MainWindow::create(HINSTANCE instance, int showCommand) {
@@ -237,6 +261,7 @@ LRESULT CALLBACK MainWindow::wndProc(HWND hwnd, UINT message, WPARAM wparam, LPA
 }
 
 void MainWindow::onCreate(HINSTANCE instance) {
+    attachMainMenu(hwnd_);
     toolbar_.create(hwnd_, instance);
     progressBar_.create(hwnd_, instance);
     leftPanel_.create(hwnd_, instance);

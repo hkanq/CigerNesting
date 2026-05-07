@@ -45,12 +45,12 @@ struct EngineSettings {
     double margin = 10.0;
     PlacementStrategy placementStrategy = PlacementStrategy::BottomLeft;
     bool allowRotation = true;
-    RotationMode rotationMode = RotationMode::RightAngles;
-    double rotationStepDegrees = 1.0;
+    RotationMode rotationMode = RotationMode::ContinuousRefine;
+    double rotationStepDegrees = 0.001;
     bool allowMirroring = false;
-    QualityMode qualityMode = QualityMode::Balanced;
-    PerformanceProfile performanceProfile = PerformanceProfile::Balanced;
-    double timeLimitSeconds = 30.0;
+    QualityMode qualityMode = QualityMode::MaxQuality;
+    PerformanceProfile performanceProfile = PerformanceProfile::Maximum;
+    double timeLimitSeconds = 0.0;
     int cpuThreadCount = 0;
     bool useGpuFutureFlag = false;
     int livePreviewIntervalMs = 75;

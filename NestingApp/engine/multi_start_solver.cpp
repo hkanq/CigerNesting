@@ -9,6 +9,7 @@
 #include "engine/empty_space_map.h"
 #include "engine/contact_packing.h"
 #include "engine/convergence.h"
+#include "engine/constructive_rebuild_engine.h"
 #include "engine/destroy_rebuild.h"
 #include "engine/escape_search.h"
 #include "engine/gap_filling.h"
@@ -288,10 +289,13 @@ void mergeStats(SolverStats& target, const SolverStats& source) {
     target.destroyTemporaryAccepted += source.destroyTemporaryAccepted;
     target.destroyBestUpdates += source.destroyBestUpdates;
     target.destroySubsetTotal += source.destroySubsetTotal;
+    target.placementDepthTotal += source.placementDepthTotal;
+    target.rebuildPreviewEvents += source.rebuildPreviewEvents;
     target.beamNodesExpanded += source.beamNodesExpanded;
     target.beamValidLeaves += source.beamValidLeaves;
     if (target.destroyAttempts > 0) {
         target.averageSubsetSize = static_cast<double>(target.destroySubsetTotal) / static_cast<double>(target.destroyAttempts);
+        target.averagePlacementDepth = static_cast<double>(target.placementDepthTotal) / static_cast<double>(target.destroyAttempts);
     }
     const size_t acceptedTotal = target.acceptedMoves;
     const size_t rejectedTotal = target.rejectedByAcceptance + target.rejectedWorseMoves + target.rejectedByScore;
@@ -530,6 +534,147 @@ double contourContactScore(
     return contact;
 }
 
+Vec2 clampedStrategyAnchor(const EngineSettings& settings, const AABB& local, double xBias, double yBias) {
+    const double halfW = local.width() * 0.5;
+    const double halfH = local.height() * 0.5;
+    const double left = settings.margin + halfW;
+    const double right = settings.sheetWidth - settings.margin - halfW;
+    const double low = settings.margin + halfH;
+    const double high = settings.sheetHeight - settings.margin - halfH;
+    return {
+        clampLocal(left + (right - left) * xBias, left, right),
+        clampLocal(low + (high - low) * yBias, low, high)
+    };
+}
+
+void appendUniqueAnchor(std::vector<Vec2>& anchors, Vec2 anchor) {
+    for (Vec2 existing : anchors) {
+        if (distance(existing, anchor) < 1e-6) {
+            return;
+        }
+    }
+    anchors.push_back(anchor);
+}
+
+std::vector<Vec2> strategySheetAnchors(
+    const Document& document,
+    const EngineSettings& settings,
+    const AABB& local,
+    size_t placedOrdinal) {
+    const Vec2 bottomLeft = clampedStrategyAnchor(settings, local, 0.0, 0.0);
+    const Vec2 topLeft = clampedStrategyAnchor(settings, local, 0.0, 1.0);
+    const Vec2 bottomRight = clampedStrategyAnchor(settings, local, 1.0, 0.0);
+    const Vec2 topRight = clampedStrategyAnchor(settings, local, 1.0, 1.0);
+    const Vec2 center = clampedStrategyAnchor(settings, local, 0.5, 0.5);
+    const Vec2 leftMid = clampedStrategyAnchor(settings, local, 0.0, 0.5);
+    const Vec2 rightMid = clampedStrategyAnchor(settings, local, 1.0, 0.5);
+    const Vec2 bottomMid = clampedStrategyAnchor(settings, local, 0.5, 0.0);
+    const Vec2 topMid = clampedStrategyAnchor(settings, local, 0.5, 1.0);
+
+    std::vector<Vec2> anchors;
+    if (settings.placementStrategy == PlacementStrategy::UserPoints && !document.sheet.getUserPlacementPoints().empty()) {
+        for (Vec2 point : document.sheet.getUserPlacementPoints()) {
+            appendUniqueAnchor(anchors, point);
+        }
+    }
+
+    switch (settings.placementStrategy) {
+    case PlacementStrategy::TopLeft:
+        appendUniqueAnchor(anchors, topLeft);
+        appendUniqueAnchor(anchors, topMid);
+        appendUniqueAnchor(anchors, leftMid);
+        break;
+    case PlacementStrategy::BottomRight:
+        appendUniqueAnchor(anchors, bottomRight);
+        appendUniqueAnchor(anchors, bottomMid);
+        appendUniqueAnchor(anchors, rightMid);
+        break;
+    case PlacementStrategy::TopRight:
+        appendUniqueAnchor(anchors, topRight);
+        appendUniqueAnchor(anchors, topMid);
+        appendUniqueAnchor(anchors, rightMid);
+        break;
+    case PlacementStrategy::LeftToRight:
+        appendUniqueAnchor(anchors, leftMid);
+        appendUniqueAnchor(anchors, bottomLeft);
+        appendUniqueAnchor(anchors, topLeft);
+        break;
+    case PlacementStrategy::RightToLeft:
+        appendUniqueAnchor(anchors, rightMid);
+        appendUniqueAnchor(anchors, bottomRight);
+        appendUniqueAnchor(anchors, topRight);
+        break;
+    case PlacementStrategy::TopToBottom:
+        appendUniqueAnchor(anchors, topMid);
+        appendUniqueAnchor(anchors, topLeft);
+        appendUniqueAnchor(anchors, topRight);
+        break;
+    case PlacementStrategy::BottomToTop:
+        appendUniqueAnchor(anchors, bottomMid);
+        appendUniqueAnchor(anchors, bottomLeft);
+        appendUniqueAnchor(anchors, bottomRight);
+        break;
+    case PlacementStrategy::CenterOut:
+        appendUniqueAnchor(anchors, center);
+        appendUniqueAnchor(anchors, bottomLeft);
+        appendUniqueAnchor(anchors, topRight);
+        break;
+    case PlacementStrategy::OutsideIn: {
+        const Vec2 corners[] = {bottomLeft, topRight, bottomRight, topLeft};
+        appendUniqueAnchor(anchors, corners[placedOrdinal % 4u]);
+        appendUniqueAnchor(anchors, corners[(placedOrdinal + 1u) % 4u]);
+        appendUniqueAnchor(anchors, corners[(placedOrdinal + 2u) % 4u]);
+        break;
+    }
+    case PlacementStrategy::UserPoints:
+    case PlacementStrategy::BottomLeft:
+    default:
+        appendUniqueAnchor(anchors, bottomLeft);
+        appendUniqueAnchor(anchors, bottomMid);
+        appendUniqueAnchor(anchors, leftMid);
+        break;
+    }
+
+    appendUniqueAnchor(anchors, center);
+    appendUniqueAnchor(anchors, bottomLeft);
+    appendUniqueAnchor(anchors, bottomRight);
+    appendUniqueAnchor(anchors, topLeft);
+    appendUniqueAnchor(anchors, topRight);
+    appendUniqueAnchor(anchors, bottomMid);
+    appendUniqueAnchor(anchors, topMid);
+    appendUniqueAnchor(anchors, leftMid);
+    appendUniqueAnchor(anchors, rightMid);
+    return anchors;
+}
+
+double placementStrategyPenalty(const EngineSettings& settings, const AABB& used) {
+    if (!used.isValid()) {
+        return 0.0;
+    }
+    switch (settings.placementStrategy) {
+    case PlacementStrategy::TopLeft:
+        return used.min.x * 5.0 + (settings.sheetHeight - used.max.y) * 5.0;
+    case PlacementStrategy::BottomRight:
+    case PlacementStrategy::RightToLeft:
+        return (settings.sheetWidth - used.max.x) * 5.0 + used.min.y * 5.0;
+    case PlacementStrategy::TopRight:
+        return (settings.sheetWidth - used.max.x) * 5.0 + (settings.sheetHeight - used.max.y) * 5.0;
+    case PlacementStrategy::TopToBottom:
+        return (settings.sheetHeight - used.max.y) * 5.0;
+    case PlacementStrategy::BottomToTop:
+        return used.min.y * 5.0;
+    case PlacementStrategy::CenterOut:
+        return distance(used.center(), {settings.sheetWidth * 0.5, settings.sheetHeight * 0.5}) * 2.0;
+    case PlacementStrategy::OutsideIn:
+        return std::min({used.min.x, used.min.y, settings.sheetWidth - used.max.x, settings.sheetHeight - used.max.y}) * 1.5;
+    case PlacementStrategy::LeftToRight:
+    case PlacementStrategy::UserPoints:
+    case PlacementStrategy::BottomLeft:
+    default:
+        return used.min.x * 5.0 + used.min.y * 5.0;
+    }
+}
+
 double contourSeedCandidateScore(
     const Document& document,
     const EngineSettings& settings,
@@ -542,12 +687,12 @@ double contourSeedCandidateScore(
     for (size_t other : placed) {
         used.include(transformedBounds(document.parts[other], poses[other]));
     }
-    used.include(transformedBounds(document.parts[partIndex], pose));
-    const Vec2 sheetCenter{settings.sheetWidth * 0.5, settings.sheetHeight * 0.5};
-    const Vec2 center = transformedBounds(document.parts[partIndex], pose).center();
+    const AABB candidateBounds = transformedBounds(document.parts[partIndex], pose);
+    used.include(candidateBounds);
     const double contact = contourContactScore(document, settings, poses, placed, placedBounds, partIndex, pose);
-    const double centerBias = distance(center, sheetCenter) * 0.03;
-    return used.area() + centerBias - contact * 650.0;
+    const Vec2 anchor = strategySheetAnchors(document, settings, candidateBounds, placed.size()).front();
+    const double anchorBias = distance(candidateBounds.center(), anchor) * 0.04;
+    return used.area() + placementStrategyPenalty(settings, used) + anchorBias - contact * 650.0;
 }
 
 void appendUniquePose(std::vector<Pose>& poses, const Pose& pose) {
@@ -590,17 +735,7 @@ std::vector<Pose> contourSeedCandidates(
             orientation.angleRadians = angle;
             orientation.mirrored = mirrored;
             const AABB local = transformedBounds(part, orientation);
-            const std::array<Vec2, 9> sheetAnchors{
-                sheetCenter,
-                Vec2{settings.margin + local.width() * 0.5, settings.margin + local.height() * 0.5},
-                Vec2{settings.sheetWidth - settings.margin - local.width() * 0.5, settings.margin + local.height() * 0.5},
-                Vec2{settings.margin + local.width() * 0.5, settings.sheetHeight - settings.margin - local.height() * 0.5},
-                Vec2{settings.sheetWidth - settings.margin - local.width() * 0.5, settings.sheetHeight - settings.margin - local.height() * 0.5},
-                Vec2{settings.sheetWidth * 0.5, settings.margin + local.height() * 0.5},
-                Vec2{settings.sheetWidth * 0.5, settings.sheetHeight - settings.margin - local.height() * 0.5},
-                Vec2{settings.margin + local.width() * 0.5, settings.sheetHeight * 0.5},
-                Vec2{settings.sheetWidth - settings.margin - local.width() * 0.5, settings.sheetHeight * 0.5}
-            };
+            const std::vector<Vec2> sheetAnchors = strategySheetAnchors(document, settings, local, placedOrdinal);
             for (Vec2 anchor : sheetAnchors) {
                 appendUniquePose(candidates, poseFromCenterAnchor({angle, mirrored, local}, anchor));
             }
@@ -694,6 +829,9 @@ bool qualityBetterLayout(const LayoutState& candidate, const LayoutState& incumb
     }
     if (!incumbent.valid()) {
         return true;
+    }
+    if (candidate.utilization + 0.003 < incumbent.utilization) {
+        return false;
     }
     if (candidate.utilization > incumbent.utilization + 1e-6) {
         return true;
@@ -1008,9 +1146,37 @@ LayoutState MultiStartSolver::solve(
 
     aggregateStats.workerCount = 1;
     aggregateStats.attemptsStarted = 1;
+    const double totalLimit = effectiveSafetyTimeLimitSeconds(settings, document.parts.size());
+    if (!stopRequested.load() && settings.performanceProfile != PerformanceProfile::Fast) {
+        ConstructiveRebuildEngine constructive;
+        LayoutState constructiveBest = constructive.optimize(document, settings, best, globalPenalty, stopRequested, aggregateStats, [&](const ConstructiveRebuildProgress& event) {
+            if (!callback) {
+                return;
+            }
+            SolverProgress solverProgress;
+            solverProgress.phase = SolverPhase::Rearrangement;
+            solverProgress.currentStrategy = SolverStrategy::RegionRepack;
+            solverProgress.progress = std::min(0.78, 0.14 + elapsedSeconds(started) / std::max(0.25, totalLimit) * 0.55);
+            solverProgress.current = event.current;
+            solverProgress.best = event.best;
+            solverProgress.elapsedSeconds = elapsedSeconds(started);
+            solverProgress.stats = event.stats;
+            solverProgress.activeMoves = event.activeMoves;
+            solverProgress.versionId = event.versionId;
+            solverProgress.layoutChanged = event.layoutChanged;
+            solverProgress.lastMovedPart = event.changedParts.empty() ? kNoPartIndex : event.changedParts.front();
+            solverProgress.lastMoveStrategy = SolverStrategy::RegionRepack;
+            solverProgress.bestUpdated = event.bestUpdated;
+            solverProgress.changedParts = event.changedParts;
+            callback(solverProgress);
+        });
+        if (constructiveBest.valid() && qualityBetterLayout(constructiveBest, best)) {
+            best = std::move(constructiveBest);
+        }
+    }
+
     LayoutState bestBeforeAdaptive = best;
     AdaptiveUnifiedOptimizer optimizer;
-    const double totalLimit = effectiveSafetyTimeLimitSeconds(settings, document.parts.size());
     LayoutState optimized = optimizer.optimize(document, settings, best, globalPenalty, stopRequested, aggregateStats, [&](const AdaptiveProgressEvent& event) {
         if (!callback) {
             return;
@@ -1033,79 +1199,6 @@ LayoutState MultiStartSolver::solve(
         callback(solverProgress);
     });
     best = qualityBetterLayout(optimized, bestBeforeAdaptive) ? std::move(optimized) : std::move(bestBeforeAdaptive);
-
-    if (!stopRequested.load() && settings.performanceProfile != PerformanceProfile::Fast) {
-        DestroyRebuild destroyRebuild;
-        LayoutState improved = destroyRebuild.improve(document, settings, best, stopRequested, &aggregateStats);
-        if (improved.valid() && qualityBetterLayout(improved, best)) {
-            best = std::move(improved);
-            if (callback) {
-                SolverProgress solverProgress;
-                solverProgress.phase = SolverPhase::Rearrangement;
-                solverProgress.currentStrategy = SolverStrategy::RegionRepack;
-                solverProgress.progress = 0.93;
-                solverProgress.current = best;
-                solverProgress.best = best;
-                solverProgress.elapsedSeconds = elapsedSeconds(started);
-                solverProgress.stats = aggregateStats;
-                solverProgress.activeMoves.region = aggregateStats.destroyAccepted;
-                solverProgress.versionId = aggregateStats.bestUpdates + 2;
-                solverProgress.layoutChanged = true;
-                solverProgress.lastMoveStrategy = SolverStrategy::RegionRepack;
-                solverProgress.bestUpdated = true;
-                callback(solverProgress);
-            }
-        }
-    }
-
-    if (!stopRequested.load() && settings.performanceProfile != PerformanceProfile::Fast) {
-        LocalRegionRepack localRepack;
-        LayoutState improved = localRepack.improve(document, settings, best, stopRequested, &aggregateStats);
-        if (improved.valid() && (qualityBetterLayout(improved, best) || improved.totalScore + 1e-9 < best.totalScore)) {
-            best = std::move(improved);
-            if (callback) {
-                SolverProgress solverProgress;
-                solverProgress.phase = SolverPhase::Rearrangement;
-                solverProgress.currentStrategy = SolverStrategy::RegionRepack;
-                solverProgress.progress = 0.95;
-                solverProgress.current = best;
-                solverProgress.best = best;
-                solverProgress.elapsedSeconds = elapsedSeconds(started);
-                solverProgress.stats = aggregateStats;
-                solverProgress.activeMoves.region = aggregateStats.localRegionRepackAccepted;
-                solverProgress.versionId = aggregateStats.bestUpdates + 2;
-                solverProgress.layoutChanged = true;
-                solverProgress.lastMoveStrategy = SolverStrategy::RegionRepack;
-                solverProgress.bestUpdated = true;
-                callback(solverProgress);
-            }
-        }
-    }
-
-    if (!stopRequested.load() && settings.performanceProfile != PerformanceProfile::Fast) {
-        AggressiveGapFiller gapFiller;
-        LayoutState improved = gapFiller.improve(document, settings, best, stopRequested, &aggregateStats);
-        if (qualityBetterLayout(improved, best)) {
-            best = std::move(improved);
-            if (callback) {
-                SolverProgress solverProgress;
-                solverProgress.phase = SolverPhase::GapFilling;
-                solverProgress.currentStrategy = SolverStrategy::GapFilling;
-                solverProgress.progress = 0.97;
-                solverProgress.current = best;
-                solverProgress.best = best;
-                solverProgress.elapsedSeconds = elapsedSeconds(started);
-                solverProgress.stats = aggregateStats;
-                solverProgress.activeMoves.gap = aggregateStats.aggressiveGapAccepted;
-                solverProgress.activeMoves.contact = aggregateStats.slideToContactAccepted;
-                solverProgress.versionId = aggregateStats.bestUpdates + 2;
-                solverProgress.layoutChanged = true;
-                solverProgress.lastMoveStrategy = SolverStrategy::GapFilling;
-                solverProgress.bestUpdated = true;
-                callback(solverProgress);
-            }
-        }
-    }
 
     current = best;
     aggregateStats.attemptsCompleted = 1;

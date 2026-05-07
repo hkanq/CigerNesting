@@ -25,6 +25,7 @@ struct SolverProgress {
     size_t lastMovedPart = kNoPartIndex;
     SolverStrategy lastMoveStrategy = SolverStrategy::Idle;
     bool bestUpdated = false;
+    std::vector<size_t> changedParts;
 };
 
 using SolverProgressCallback = std::function<void(const SolverProgress&)>;

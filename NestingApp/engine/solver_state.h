@@ -139,6 +139,9 @@ struct SolverStats {
     size_t destroyBestUpdates = 0;
     size_t destroySubsetTotal = 0;
     double averageSubsetSize = 0.0;
+    size_t placementDepthTotal = 0;
+    double averagePlacementDepth = 0.0;
+    size_t rebuildPreviewEvents = 0;
     size_t beamNodesExpanded = 0;
     size_t beamValidLeaves = 0;
     double towerScore = 0.0;
@@ -169,6 +172,7 @@ struct SolverSnapshot {
     size_t lastMovedPart = kNoPartIndex;
     SolverStrategy lastMoveStrategy = SolverStrategy::Idle;
     bool bestUpdated = false;
+    std::vector<size_t> changedParts;
     bool running = false;
 };
 

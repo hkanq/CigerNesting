@@ -2,9 +2,11 @@
 
 #include "localization/localization.h"
 #include "ui/control_ids.h"
+#include <algorithm>
 #include <cwchar>
 #include <cstdlib>
 #include <string>
+#include <thread>
 
 namespace nest {
 namespace {
@@ -87,10 +89,10 @@ void RightPanel::createControls(HINSTANCE instance) {
     SendMessageW(rotationModeCombo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(loc.text(TextId::FortyFiveDegrees)));
     SendMessageW(rotationModeCombo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(loc.text(TextId::FixedStep)));
     SendMessageW(rotationModeCombo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(loc.text(TextId::ContinuousRefine)));
-    SendMessageW(rotationModeCombo_, CB_SETCURSEL, 1, 0);
+    SendMessageW(rotationModeCombo_, CB_SETCURSEL, 4, 0);
 
     createLabel(hwnd_, instance, loc.text(TextId::AnglePrecision));
-    angleStepEdit_ = createEdit(hwnd_, instance, uiid::editAngleStep, L"1.0");
+    angleStepEdit_ = createEdit(hwnd_, instance, uiid::editAngleStep, L"0.001");
 
     mirrorCheck_ = CreateWindowW(L"BUTTON", loc.text(TextId::MirroringEnabled), WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, 0, 0, 150, 22, hwnd_, controlMenu(uiid::checkMirroring), instance, nullptr);
 
@@ -99,12 +101,20 @@ void RightPanel::createControls(HINSTANCE instance) {
     SendMessageW(qualityCombo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(loc.text(TextId::Fast)));
     SendMessageW(qualityCombo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(loc.text(TextId::Balanced)));
     SendMessageW(qualityCombo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(loc.text(TextId::MaxQuality)));
-    SendMessageW(qualityCombo_, CB_SETCURSEL, 1, 0);
+    SendMessageW(qualityCombo_, CB_SETCURSEL, 2, 0);
 
-    createLabel(hwnd_, instance, loc.text(TextId::TimeLimitSeconds));
-    timeLimitEdit_ = createEdit(hwnd_, instance, uiid::editTimeLimit, L"30");
     createLabel(hwnd_, instance, loc.text(TextId::ThreadCount));
-    threadEdit_ = createEdit(hwnd_, instance, uiid::editThreads, L"0");
+    threadEdit_ = CreateWindowW(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST, 0, 0, 150, 180, hwnd_, controlMenu(uiid::editThreads), instance, nullptr);
+    SendMessageW(threadEdit_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(loc.text(TextId::ThreadMaximum)));
+    const unsigned int logicalCores = std::max(1u, std::thread::hardware_concurrency());
+    for (unsigned int cores = 1; cores <= logicalCores; cores *= 2) {
+        std::wstring label = std::to_wstring(cores) + L" " + loc.text(TextId::ThreadCore);
+        SendMessageW(threadEdit_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label.c_str()));
+        if (cores > logicalCores / 2u) {
+            break;
+        }
+    }
+    SendMessageW(threadEdit_, CB_SETCURSEL, 0, 0);
 
     startButton_ = CreateWindowW(L"BUTTON", loc.text(TextId::Start), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 0, 0, 100, 30, hwnd_, controlMenu(uiid::buttonStart), instance, nullptr);
     stopButton_ = CreateWindowW(L"BUTTON", loc.text(TextId::Stop), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 0, 0, 100, 30, hwnd_, controlMenu(uiid::buttonStop), instance, nullptr);
@@ -129,7 +139,7 @@ void RightPanel::layoutControls() {
     const int row = 34;
     const int editW = 80;
 
-    const int labelYs[] = {52, 86, 120, 154, 188, 256, 290, 358, 392, 426};
+    const int labelYs[] = {52, 86, 120, 154, 188, 256, 290, 358, 392};
     int labelIndex = 0;
     HWND child = GetWindow(hwnd_, GW_CHILD);
     while (child) {
@@ -162,9 +172,7 @@ void RightPanel::layoutControls() {
     y += row;
     MoveWindow(qualityCombo_, editX - 28, y, 108, 100, TRUE);
     y += row;
-    MoveWindow(timeLimitEdit_, editX, y, editW, 24, TRUE);
-    y += row;
-    MoveWindow(threadEdit_, editX, y, editW, 24, TRUE);
+    MoveWindow(threadEdit_, editX - 72, y, 152, 140, TRUE);
     y += row + 12;
     MoveWindow(startButton_, labelX, y, 110, 30, TRUE);
     MoveWindow(stopButton_, labelX + 126, y, 110, 30, TRUE);
@@ -179,10 +187,17 @@ EngineSettings RightPanel::getSettings() const {
     settings.partSpacing = readDouble(spacingEdit_, 5.0);
     settings.margin = readDouble(marginEdit_, 10.0);
     settings.allowRotation = SendMessageW(rotationCheck_, BM_GETCHECK, 0, 0) == BST_CHECKED;
-    settings.rotationStepDegrees = readDouble(angleStepEdit_, 1.0);
+    settings.rotationStepDegrees = readDouble(angleStepEdit_, 0.001);
     settings.allowMirroring = SendMessageW(mirrorCheck_, BM_GETCHECK, 0, 0) == BST_CHECKED;
-    settings.timeLimitSeconds = readDouble(timeLimitEdit_, 30.0);
-    settings.cpuThreadCount = readInt(threadEdit_, 0);
+    settings.timeLimitSeconds = 0.0;
+    const LRESULT threadSelection = SendMessageW(threadEdit_, CB_GETCURSEL, 0, 0);
+    if (threadSelection <= 0) {
+        settings.cpuThreadCount = 0;
+    } else {
+        wchar_t buffer[64]{};
+        SendMessageW(threadEdit_, CB_GETLBTEXT, static_cast<WPARAM>(threadSelection), reinterpret_cast<LPARAM>(buffer));
+        settings.cpuThreadCount = std::max(1, static_cast<int>(std::wcstol(buffer, nullptr, 10)));
+    }
 
     const LRESULT placement = SendMessageW(placementCombo_, CB_GETCURSEL, 0, 0);
     switch (placement) {
@@ -205,7 +220,7 @@ EngineSettings RightPanel::getSettings() const {
     case 2: settings.rotationMode = RotationMode::FortyFiveDegrees; break;
     case 3: settings.rotationMode = RotationMode::FixedStep; break;
     case 4: settings.rotationMode = RotationMode::ContinuousRefine; break;
-    default: settings.rotationMode = RotationMode::RightAngles; break;
+    default: settings.rotationMode = RotationMode::ContinuousRefine; break;
     }
 
     const LRESULT quality = SendMessageW(qualityCombo_, CB_GETCURSEL, 0, 0);

@@ -81,7 +81,7 @@ SolverResult NestingEngine::getBestResult() const {
     return bestResult_;
 }
 
-void NestingEngine::publishSnapshot(SolverPhase phase, SolverStrategy strategy, double progress, const std::vector<Pose>& current, const std::vector<Pose>& best, size_t collisions, double overlap, double utilization, bool running, double elapsedSeconds, size_t validationFailures, size_t invalidParts, const SolverStats& stats, const ActiveMoveSummary& activeMoves, uint64_t versionId, bool layoutChanged, size_t lastMovedPart, SolverStrategy lastMoveStrategy, bool bestUpdated) {
+void NestingEngine::publishSnapshot(SolverPhase phase, SolverStrategy strategy, double progress, const std::vector<Pose>& current, const std::vector<Pose>& best, size_t collisions, double overlap, double utilization, bool running, double elapsedSeconds, size_t validationFailures, size_t invalidParts, const SolverStats& stats, const ActiveMoveSummary& activeMoves, uint64_t versionId, bool layoutChanged, size_t lastMovedPart, SolverStrategy lastMoveStrategy, bool bestUpdated, const std::vector<size_t>& changedParts) {
     auto snapshot = std::make_shared<SolverSnapshot>();
     snapshot->currentPoses = current;
     snapshot->bestPoses = best;
@@ -101,6 +101,7 @@ void NestingEngine::publishSnapshot(SolverPhase phase, SolverStrategy strategy, 
     snapshot->lastMovedPart = lastMovedPart;
     snapshot->lastMoveStrategy = lastMoveStrategy;
     snapshot->bestUpdated = bestUpdated;
+    snapshot->changedParts = changedParts;
     snapshot->running = running;
 
     std::lock_guard<std::mutex> lock(snapshotMutex_);
@@ -135,7 +136,9 @@ void NestingEngine::run() {
         latestCurrent = progress.current;
         latestBest = progress.best;
         latestStats = progress.stats;
-        const LayoutState& display = progress.best.valid() && !progress.best.poses.empty() ? progress.best : progress.current;
+        const LayoutState& display = progress.layoutChanged && progress.current.valid() && !progress.current.poses.empty()
+            ? progress.current
+            : (progress.best.valid() && !progress.best.poses.empty() ? progress.best : progress.current);
         publishSnapshot(
             progress.phase,
             progress.currentStrategy,
@@ -157,7 +160,8 @@ void NestingEngine::run() {
             progress.layoutChanged,
             progress.lastMovedPart,
             progress.lastMoveStrategy,
-            progress.bestUpdated);
+            progress.bestUpdated,
+            progress.changedParts);
     };
 
     publishSnapshot(SolverPhase::PrepareGeometry, SolverStrategy::AdaptiveSearch, 0.02, {}, {}, 0, 0.0, 0.0, true, elapsedSecondsSince(started));

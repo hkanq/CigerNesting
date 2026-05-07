@@ -372,6 +372,29 @@ When the user enters `0.001`, the solver does not scan all 360,000 possible glob
 
 Each accepted refinement must improve score and remain valid: no part collision, no spacing violation, no sheet invalidity, and no forbidden-zone violation.
 
+## Constructive Rebuild Engine
+
+`Maximum` quality now treats constructive rebuild as the main quality search, not as a shallow post-pass. The engine targets empty regions, low-contact clusters, and boundary contributors, then rebuilds multi-part subsets with analytic contour-contact candidates. The current analytic provider goes through `IContactCandidateProvider`, so a future NFP/IFP provider can replace or augment it without wiring the main solver directly to one candidate implementation.
+
+Current defaults favor industrial solving:
+
+- `QualityMode::MaxQuality`
+- `PerformanceProfile::Maximum`
+- `RotationMode::ContinuousRefine`
+- `rotationStepDegrees = 0.001`
+- `timeLimitSeconds = 0`, meaning auto convergence with positive values used only as a safety cap
+- `cpuThreadCount = 0`, meaning profile-driven maximum/automatic CPU selection
+
+NFP/IFP preparation checklist:
+
+1. robust polygon offset prerequisite
+2. Minkowski sum support
+3. no-fit polygon generation
+4. inner-fit polygon generation for sheet boundaries
+5. holes and forbidden-zone handling
+6. rotation/mirror candidate cache
+7. pairwise NFP cache behind `IContactCandidateProvider`
+
 ## Known Gaps
 
 - Clearance is conservative segment-distance validation, not true polygon offset.

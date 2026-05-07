@@ -40,7 +40,6 @@ private:
     HWND angleStepEdit_ = nullptr;
     HWND mirrorCheck_ = nullptr;
     HWND qualityCombo_ = nullptr;
-    HWND timeLimitEdit_ = nullptr;
     HWND threadEdit_ = nullptr;
     HWND startButton_ = nullptr;
     HWND stopButton_ = nullptr;
