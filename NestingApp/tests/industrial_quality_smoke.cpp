@@ -104,6 +104,20 @@ bool runQualityGate(const std::filesystem::path& root, const QualityCase& testCa
               << " spacingPenalty=" << result.state.spacingPenalty
               << " sheetPenalty=" << result.state.sheetPenalty
               << " bestUpdates=" << result.stats.bestUpdates
+              << " destroyBestUpdates=" << result.stats.destroyBestUpdates
+              << " compactionAttempts=" << result.stats.rebuildCompactionAttempts
+              << " compactionClusters=" << result.stats.rebuildCompactionClusters
+              << " compactionAccepted=" << result.stats.rebuildCompactionAccepted
+              << " coordinatedAttempts=" << result.stats.coordinatedClusterRebuildAttempts
+              << " coordinatedAccepted=" << result.stats.coordinatedClusterRebuildAccepted
+              << " coordinatedMotion=" << result.stats.coordinatedClusterMotionAccepted
+              << " avgCluster=" << result.stats.averageCoordinatedClusterSize
+              << " denseAttempts=" << result.stats.denseSmallPartCompactionAttempts
+              << " denseAccepted=" << result.stats.denseSmallPartCompactionAccepted
+              << " bestUsedReduction=" << result.stats.bestRebuildUsedAreaReduction
+              << " bestWidthReduction=" << result.stats.bestRebuildUsedWidthReduction
+              << " bestHeightReduction=" << result.stats.bestRebuildUsedHeightReduction
+              << " bestUtilGain=" << result.stats.bestRebuildUtilizationGain
               << " emptySpace=" << result.emptyMap.totalEmptyArea
               << " largestGap=" << result.emptyMap.largestRegionArea
               << " fillableGaps=" << result.stats.fillableGapCount
@@ -116,6 +130,11 @@ bool runQualityGate(const std::filesystem::path& root, const QualityCase& testCa
               << "\n";
     bool ok = true;
     ok = expect("final layout validity is strict", validLayout(result.state)) && ok;
+    ok = expect("constructive compaction produced a real used-area/utilization signal",
+        result.stats.bestRebuildUsedAreaReduction > 1.0 ||
+        result.stats.bestRebuildUsedWidthReduction > 0.25 ||
+        result.stats.bestRebuildUsedHeightReduction > 0.25 ||
+        result.stats.bestRebuildUtilizationGain > 0.010) && ok;
     ok = expect("Maximum utilization target", result.state.utilization + 1e-9 >= testCase.minimumUtilization) && ok;
     ok = expect("empty space map reports free regions", !result.emptyMap.regions.empty() && result.emptyMap.largestRegionArea > 0.0) && ok;
     return ok;

@@ -381,6 +381,14 @@ void CanvasView::drawDocument(IRenderer& renderer) {
             if (snapshot_.bestUpdated) {
                 debug << L" | " << loc.text(TextId::BestUpdate);
             }
+            if (snapshot_.rebuildAttempt > 0) {
+                debug << L" | Rebuild " << snapshot_.rebuildAttempt
+                      << L" depth " << snapshot_.beamDepth
+                      << L"/" << snapshot_.subsetSize;
+                if (snapshot_.previewTemporary) {
+                    debug << L" preview";
+                }
+            }
             renderer.drawText({18, 42}, debug.str(), {148, 65, 35, 255});
         }
     }

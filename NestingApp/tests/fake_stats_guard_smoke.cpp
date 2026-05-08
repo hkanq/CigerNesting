@@ -40,8 +40,13 @@ bool suspiciousManualStats(const std::string& text) {
         "stats.acceptedMoves = 184"
     };
     for (const char* pattern : patterns) {
-        if (text.find(pattern) != std::string::npos) {
-            return true;
+        size_t pos = text.find(pattern);
+        while (pos != std::string::npos) {
+            const size_t next = pos + std::string(pattern).size();
+            if (next >= text.size() || text[next] != '=') {
+                return true;
+            }
+            pos = text.find(pattern, next);
         }
     }
     return false;

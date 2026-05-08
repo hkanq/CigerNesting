@@ -16,7 +16,10 @@ enum class AnalyticContactKind {
     SheetBoundary,
     EdgeParallel,
     NotchCavity,
-    RegionAnchor
+    RegionAnchor,
+    NfpPartPart,
+    NfpHoleBoundary,
+    InnerFitBoundary
 };
 
 struct AnalyticContactCandidate {
@@ -33,6 +36,8 @@ struct AnalyticContactStats {
     size_t rejectedCollision = 0;
     size_t rejectedClearance = 0;
     size_t rejectedSheet = 0;
+    size_t cacheHits = 0;
+    size_t cacheMisses = 0;
 };
 
 struct AnalyticContactRequest {

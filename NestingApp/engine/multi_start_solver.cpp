@@ -273,7 +273,17 @@ void mergeStats(SolverStats& target, const SolverStats& source) {
     target.localRegionRepackMaxCandidatesForPart = std::max(target.localRegionRepackMaxCandidatesForPart, source.localRegionRepackMaxCandidatesForPart);
     target.analyticCandidatesGenerated += source.analyticCandidatesGenerated;
     target.analyticCandidatesValid += source.analyticCandidatesValid;
+    target.analyticFallbackCandidatesGenerated += source.analyticFallbackCandidatesGenerated;
+    target.analyticFallbackCandidatesValid += source.analyticFallbackCandidatesValid;
     target.analyticCandidatesAccepted += source.analyticCandidatesAccepted;
+    target.nfpCandidatesGenerated += source.nfpCandidatesGenerated;
+    target.nfpCandidatesValid += source.nfpCandidatesValid;
+    target.nfpCandidatesAccepted += source.nfpCandidatesAccepted;
+    target.ifpCandidatesGenerated += source.ifpCandidatesGenerated;
+    target.ifpCandidatesValid += source.ifpCandidatesValid;
+    target.ifpCandidatesAccepted += source.ifpCandidatesAccepted;
+    target.nfpCacheHits += source.nfpCacheHits;
+    target.nfpCacheMisses += source.nfpCacheMisses;
     target.contactCandidatesRejectedCollision += source.contactCandidatesRejectedCollision;
     target.contactCandidatesRejectedClearance += source.contactCandidatesRejectedClearance;
     target.contactCandidatesRejectedSheet += source.contactCandidatesRejectedSheet;
@@ -287,15 +297,81 @@ void mergeStats(SolverStats& target, const SolverStats& source) {
     target.destroyAttempts += source.destroyAttempts;
     target.destroyAccepted += source.destroyAccepted;
     target.destroyTemporaryAccepted += source.destroyTemporaryAccepted;
+    target.destroyTemporaryAcceptedWithObjectiveGain += source.destroyTemporaryAcceptedWithObjectiveGain;
+    target.destroyTemporaryRejectedNoObjectiveGain += source.destroyTemporaryRejectedNoObjectiveGain;
     target.destroyBestUpdates += source.destroyBestUpdates;
+    target.destroyRejectedInvalid += source.destroyRejectedInvalid;
+    target.destroyRejectedWorseAllMetrics += source.destroyRejectedWorseAllMetrics;
+    target.destroyAcceptedReducedUsedBounds += source.destroyAcceptedReducedUsedBounds;
+    target.destroyAcceptedReducedLargestEmptyRegion += source.destroyAcceptedReducedLargestEmptyRegion;
+    target.destroyAcceptedReducedTotalEmptyArea += source.destroyAcceptedReducedTotalEmptyArea;
+    target.destroyAcceptedIncreasedContactWithGapReduction += source.destroyAcceptedIncreasedContactWithGapReduction;
+    target.rebuildCompactionAttempts += source.rebuildCompactionAttempts;
+    target.rebuildCompactionClusters += source.rebuildCompactionClusters;
+    target.rebuildCompactionAccepted += source.rebuildCompactionAccepted;
+    target.coordinatedClusterRebuildAttempts += source.coordinatedClusterRebuildAttempts;
+    target.coordinatedClusterRebuildAccepted += source.coordinatedClusterRebuildAccepted;
+    target.coordinatedClusterMotionAccepted += source.coordinatedClusterMotionAccepted;
+    target.denseSmallPartCompactionAttempts += source.denseSmallPartCompactionAttempts;
+    target.denseSmallPartCompactionAccepted += source.denseSmallPartCompactionAccepted;
+    target.clusterBeamStatesGenerated += source.clusterBeamStatesGenerated;
+    target.clusterBeamStatesKept += source.clusterBeamStatesKept;
+    target.clusterBeamLeaves += source.clusterBeamLeaves;
+    target.clusterBeamAccepted += source.clusterBeamAccepted;
+    target.clusterBeamRestoreFallbackCount += source.clusterBeamRestoreFallbackCount;
+    target.clusterBeamDepthTotal += source.clusterBeamDepthTotal;
+    target.denseClusterBeamAccepted += source.denseClusterBeamAccepted;
+    target.coordinatedClusterSizeTotal += source.coordinatedClusterSizeTotal;
     target.destroySubsetTotal += source.destroySubsetTotal;
     target.placementDepthTotal += source.placementDepthTotal;
+    target.activeContactDepthTotal += source.activeContactDepthTotal;
+    target.expansionLimitTotal += source.expansionLimitTotal;
+    target.partialEvalLimitTotal += source.partialEvalLimitTotal;
     target.rebuildPreviewEvents += source.rebuildPreviewEvents;
     target.beamNodesExpanded += source.beamNodesExpanded;
     target.beamValidLeaves += source.beamValidLeaves;
+    target.rebuildBeforeUtilization = source.rebuildBeforeUtilization;
+    target.rebuildAfterUtilization = source.rebuildAfterUtilization;
+    target.rebuildBeforeUsedArea = source.rebuildBeforeUsedArea;
+    target.rebuildAfterUsedArea = source.rebuildAfterUsedArea;
+    target.rebuildBeforeLargestEmptyRegion = source.rebuildBeforeLargestEmptyRegion;
+    target.rebuildAfterLargestEmptyRegion = source.rebuildAfterLargestEmptyRegion;
+    target.rebuildBeforeTotalEmptyArea = source.rebuildBeforeTotalEmptyArea;
+    target.rebuildAfterTotalEmptyArea = source.rebuildAfterTotalEmptyArea;
+    target.rebuildBeforeContactCount = source.rebuildBeforeContactCount;
+    target.rebuildAfterContactCount = source.rebuildAfterContactCount;
+    target.rebuildBeforeAverageClearance = source.rebuildBeforeAverageClearance;
+    target.rebuildAfterAverageClearance = source.rebuildAfterAverageClearance;
+    target.rebuildBeforeTowerScore = source.rebuildBeforeTowerScore;
+    target.rebuildAfterTowerScore = source.rebuildAfterTowerScore;
+    target.bestRebuildUsedAreaReduction = std::max(target.bestRebuildUsedAreaReduction, source.bestRebuildUsedAreaReduction);
+    target.bestRebuildUsedWidthReduction = std::max(target.bestRebuildUsedWidthReduction, source.bestRebuildUsedWidthReduction);
+    target.bestRebuildUsedHeightReduction = std::max(target.bestRebuildUsedHeightReduction, source.bestRebuildUsedHeightReduction);
+    target.bestRebuildUtilizationGain = std::max(target.bestRebuildUtilizationGain, source.bestRebuildUtilizationGain);
+    target.bestRebuildLargestEmptyRegionReduction = std::max(target.bestRebuildLargestEmptyRegionReduction, source.bestRebuildLargestEmptyRegionReduction);
+    target.bestRebuildTotalEmptyAreaReduction = std::max(target.bestRebuildTotalEmptyAreaReduction, source.bestRebuildTotalEmptyAreaReduction);
+    target.bestRebuildContactGain = std::max(target.bestRebuildContactGain, source.bestRebuildContactGain);
     if (target.destroyAttempts > 0) {
         target.averageSubsetSize = static_cast<double>(target.destroySubsetTotal) / static_cast<double>(target.destroyAttempts);
         target.averagePlacementDepth = static_cast<double>(target.placementDepthTotal) / static_cast<double>(target.destroyAttempts);
+        target.averageActiveContactDepth = static_cast<double>(target.activeContactDepthTotal) / static_cast<double>(target.destroyAttempts);
+        target.averageExpansionLimit = static_cast<double>(target.expansionLimitTotal) / static_cast<double>(target.destroyAttempts);
+        target.averagePartialEvalLimit = static_cast<double>(target.partialEvalLimitTotal) / static_cast<double>(target.destroyAttempts);
+    }
+    if (target.coordinatedClusterRebuildAttempts > 0) {
+        target.averageCoordinatedClusterSize =
+            static_cast<double>(target.coordinatedClusterSizeTotal) /
+            static_cast<double>(target.coordinatedClusterRebuildAttempts);
+    }
+    if (target.clusterBeamLeaves > 0) {
+        target.clusterBeamAverageDepth =
+            static_cast<double>(target.clusterBeamDepthTotal) /
+            static_cast<double>(target.clusterBeamLeaves);
+    }
+    if (target.clusterBeamStatesGenerated > 0) {
+        target.clusterBeamRestoreFallbackRatio =
+            static_cast<double>(target.clusterBeamRestoreFallbackCount) /
+            static_cast<double>(target.clusterBeamStatesGenerated);
     }
     const size_t acceptedTotal = target.acceptedMoves;
     const size_t rejectedTotal = target.rejectedByAcceptance + target.rejectedWorseMoves + target.rejectedByScore;
@@ -1168,6 +1244,10 @@ LayoutState MultiStartSolver::solve(
             solverProgress.lastMoveStrategy = SolverStrategy::RegionRepack;
             solverProgress.bestUpdated = event.bestUpdated;
             solverProgress.changedParts = event.changedParts;
+            solverProgress.rebuildAttempt = event.rebuildAttempt;
+            solverProgress.beamDepth = event.beamDepth;
+            solverProgress.subsetSize = event.subsetSize;
+            solverProgress.previewTemporary = event.previewTemporary;
             callback(solverProgress);
         });
         if (constructiveBest.valid() && qualityBetterLayout(constructiveBest, best)) {

@@ -26,6 +26,10 @@ struct SolverProgress {
     SolverStrategy lastMoveStrategy = SolverStrategy::Idle;
     bool bestUpdated = false;
     std::vector<size_t> changedParts;
+    size_t rebuildAttempt = 0;
+    size_t beamDepth = 0;
+    size_t subsetSize = 0;
+    bool previewTemporary = false;
 };
 
 using SolverProgressCallback = std::function<void(const SolverProgress&)>;

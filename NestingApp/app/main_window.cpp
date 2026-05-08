@@ -170,10 +170,10 @@ void attachMainMenu(HWND hwnd) {
     AppendMenuW(integrationMenu, MF_STRING, uiid::buttonCorelExport, loc.text(TextId::ExportToCorel));
 
     std::wstring autoLimit = std::wstring(loc.text(TextId::TimeLimitSeconds)) + L": 0 / Auto Convergence";
-    AppendMenuW(settingsMenu, MF_STRING | MF_DISABLED, 0, autoLimit.c_str());
+    AppendMenuW(settingsMenu, MF_STRING, uiid::menuSettingsSafetyCap, autoLimit.c_str());
     AppendMenuW(settingsMenu, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(settingsMenu, MF_STRING | MF_DISABLED, 0, loc.text(TextId::ThreadMaximum));
-    AppendMenuW(settingsMenu, MF_STRING | MF_DISABLED, 0, loc.text(TextId::MaxQuality));
+    AppendMenuW(settingsMenu, MF_STRING, uiid::menuSettingsCpu, loc.text(TextId::ThreadMaximum));
+    AppendMenuW(settingsMenu, MF_STRING, uiid::menuSettingsQuality, loc.text(TextId::MaxQuality));
 
     AppendMenuW(mainMenu, MF_POPUP, reinterpret_cast<UINT_PTR>(fileMenu), loc.text(TextId::FileMenu));
     AppendMenuW(mainMenu, MF_POPUP, reinterpret_cast<UINT_PTR>(integrationMenu), loc.text(TextId::Integrations));
@@ -312,6 +312,15 @@ void MainWindow::onCommand(int id) {
         break;
     case uiid::buttonCorelExport:
         exportCorelSession();
+        break;
+    case uiid::menuSettingsSafetyCap:
+        MessageBoxW(hwnd_, L"Zaman aşımı şu anda 0: motor Auto Convergence ile durur. Pozitif değerler sonraki ayar diyalogunda yalnızca güvenlik üst sınırı olarak düzenlenecek.", loc.text(TextId::Settings), MB_OK | MB_ICONINFORMATION);
+        break;
+    case uiid::menuSettingsCpu:
+        MessageBoxW(hwnd_, L"CPU kullanımı varsayılan olarak Maximum / tüm çekirdeklerdir. Çekirdek seçimi sağ paneldeki açılır listeden yapılır.", loc.text(TextId::Settings), MB_OK | MB_ICONINFORMATION);
+        break;
+    case uiid::menuSettingsQuality:
+        MessageBoxW(hwnd_, L"Varsayılan kalite Maximum'dur. Fast yalnızca hızlı önizleme, Balanced orta kalite, Maximum endüstriyel çözüm modudur.", loc.text(TextId::Settings), MB_OK | MB_ICONINFORMATION);
         break;
     default:
         break;

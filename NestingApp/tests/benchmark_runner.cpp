@@ -877,8 +877,11 @@ int wmain(int argc, wchar_t** argv) {
     std::cout << (deterministicPass ? "PASS" : "FAIL") << " deterministic_seed case=" << cases.front().name << " profile=Balanced\n";
 
     const std::filesystem::path csvPath = outputDir / L"benchmark_results.csv";
+    const std::filesystem::path rootCsvPath = root / L"benchmark_results.csv";
     writeCsv(csvPath, rows);
+    writeCsv(rootCsvPath, rows);
     std::cout << "csv=" << narrowPath(csvPath) << "\n";
+    std::cout << "root_csv=" << narrowPath(rootCsvPath) << "\n";
     std::cout << "json_svg_dir=" << narrowPath(outputDir) << "\n";
     return allPass ? 0 : 1;
 }

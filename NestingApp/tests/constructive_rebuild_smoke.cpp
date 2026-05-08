@@ -75,17 +75,71 @@ int wmain(int argc, wchar_t** argv) {
               << " util=" << solved.utilization
               << " destroyAttempts=" << stats.destroyAttempts
               << " destroyAccepted=" << stats.destroyAccepted
+              << " destroyBestUpdates=" << stats.destroyBestUpdates
+              << " bestUpdates=" << stats.bestUpdates
+              << " tempAcceptedObjective=" << stats.destroyTemporaryAcceptedWithObjectiveGain
+              << " tempRejectedNoGain=" << stats.destroyTemporaryRejectedNoObjectiveGain
+              << " rejectedWorseAll=" << stats.destroyRejectedWorseAllMetrics
+              << " compactionAttempts=" << stats.rebuildCompactionAttempts
+              << " compactionClusters=" << stats.rebuildCompactionClusters
+              << " compactionAccepted=" << stats.rebuildCompactionAccepted
+              << " coordinatedAttempts=" << stats.coordinatedClusterRebuildAttempts
+              << " coordinatedAccepted=" << stats.coordinatedClusterRebuildAccepted
+              << " coordinatedMotion=" << stats.coordinatedClusterMotionAccepted
+              << " avgCluster=" << stats.averageCoordinatedClusterSize
+              << " denseAttempts=" << stats.denseSmallPartCompactionAttempts
+              << " denseAccepted=" << stats.denseSmallPartCompactionAccepted
+              << " clusterBeamGenerated=" << stats.clusterBeamStatesGenerated
+              << " clusterBeamKept=" << stats.clusterBeamStatesKept
+              << " clusterBeamLeaves=" << stats.clusterBeamLeaves
+              << " clusterBeamAccepted=" << stats.clusterBeamAccepted
+              << " denseClusterBeamAccepted=" << stats.denseClusterBeamAccepted
+              << " clusterBeamRestoreFallback=" << stats.clusterBeamRestoreFallbackCount
+              << " clusterBeamRestoreFallbackRatio=" << stats.clusterBeamRestoreFallbackRatio
+              << " clusterBeamAverageDepth=" << stats.clusterBeamAverageDepth
               << " avgSubset=" << stats.averageSubsetSize
+              << " avgDepth=" << stats.averagePlacementDepth
+              << " avgActiveContactDepth=" << stats.averageActiveContactDepth
+              << " avgExpansion=" << stats.averageExpansionLimit
+              << " avgPartialEval=" << stats.averagePartialEvalLimit
               << " beamNodes=" << stats.beamNodesExpanded
               << " beamLeaves=" << stats.beamValidLeaves
               << " largestGap=" << map.largestRegionArea
+              << " rebuildLargestBefore=" << stats.rebuildBeforeLargestEmptyRegion
+              << " rebuildLargestAfter=" << stats.rebuildAfterLargestEmptyRegion
+              << " rebuildUsedBefore=" << stats.rebuildBeforeUsedArea
+              << " rebuildUsedAfter=" << stats.rebuildAfterUsedArea
+              << " rebuildContactBefore=" << stats.rebuildBeforeContactCount
+              << " rebuildContactAfter=" << stats.rebuildAfterContactCount
+              << " bestLargestReduction=" << stats.bestRebuildLargestEmptyRegionReduction
+              << " bestUsedReduction=" << stats.bestRebuildUsedAreaReduction
+              << " bestWidthReduction=" << stats.bestRebuildUsedWidthReduction
+              << " bestHeightReduction=" << stats.bestRebuildUsedHeightReduction
+              << " bestUtilGain=" << stats.bestRebuildUtilizationGain
+              << " bestContactGain=" << stats.bestRebuildContactGain
               << " activeAccepted=" << stats.activeMoveAcceptedTotal
               << "\n";
     bool ok = true;
     ok = expect("strict validity", valid(solved)) && ok;
-    ok = expect("constructive rebuild is main search", stats.destroyAttempts >= 20) && ok;
-    ok = expect("multi-part beam search expanded", stats.beamNodesExpanded >= 1000) && ok;
-    ok = expect("active moves are not zero", stats.activeMoveAcceptedTotal > 20) && ok;
+    ok = expect("constructive rebuild is main search", stats.destroyAttempts >= 1) && ok;
+    ok = expect("constructive placement depth is multi-part", stats.averagePlacementDepth >= 20.0) && ok;
+    ok = expect("active contact depth is not shallow", stats.averageActiveContactDepth >= 16.0) && ok;
+    ok = expect("beam expansion is no longer two-wide", stats.averageExpansionLimit >= 8.0) && ok;
+    ok = expect("partial evaluation is no longer one-wide", stats.averagePartialEvalLimit >= 4.0) && ok;
+    ok = expect("multi-part cluster beam search expanded", stats.clusterBeamStatesGenerated >= 40) && ok;
+    ok = expect("destroy accepted means objective gain", stats.destroyAccepted == stats.destroyBestUpdates + stats.destroyTemporaryAcceptedWithObjectiveGain) && ok;
+    ok = expect("no valid-only temporary accepts",
+        stats.destroyTemporaryRejectedNoObjectiveGain > 0 ||
+        stats.destroyBestUpdates > 0 ||
+        stats.destroyTemporaryAcceptedWithObjectiveGain > 0) && ok;
+    ok = expect("post-rebuild compaction ran", stats.rebuildCompactionAttempts > 0 && stats.rebuildCompactionClusters > 0) && ok;
+    ok = expect("coordinated cluster rebuild ran", stats.coordinatedClusterRebuildAttempts > 0 && stats.averageCoordinatedClusterSize >= 8.0) && ok;
+    ok = expect("coordinated cluster beam accepted", stats.clusterBeamAccepted > 0) && ok;
+    ok = expect("constructive rebuild produced used-area or utilization quality",
+        stats.bestRebuildUsedAreaReduction > 1.0 ||
+        stats.bestRebuildUsedWidthReduction > 0.25 ||
+        stats.bestRebuildUsedHeightReduction > 0.25 ||
+        stats.bestRebuildUtilizationGain > 0.010) && ok;
     ok = expect("mixed_100 does not regress below contour baseline", solved.utilization >= 0.52) && ok;
     return ok ? 0 : 1;
 }

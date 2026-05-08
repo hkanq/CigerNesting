@@ -21,6 +21,10 @@ struct ConstructiveRebuildProgress {
     bool layoutChanged = false;
     bool bestUpdated = false;
     std::vector<size_t> changedParts;
+    size_t rebuildAttempt = 0;
+    size_t beamDepth = 0;
+    size_t subsetSize = 0;
+    bool previewTemporary = false;
 };
 
 using ConstructiveRebuildCallback = std::function<void(const ConstructiveRebuildProgress&)>;

@@ -233,6 +233,15 @@ double priorityForKind(AnalyticContactKind kind, bool fixedHole, bool fixedRefle
     case AnalyticContactKind::RegionAnchor:
         priority = 46.0;
         break;
+    case AnalyticContactKind::NfpPartPart:
+        priority = 96.0;
+        break;
+    case AnalyticContactKind::NfpHoleBoundary:
+        priority = 110.0;
+        break;
+    case AnalyticContactKind::InnerFitBoundary:
+        priority = 92.0;
+        break;
     }
     if (fixedHole) {
         priority += 22.0;

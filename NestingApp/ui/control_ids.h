@@ -24,4 +24,8 @@ constexpr int editThreads = 2012;
 
 constexpr int timerSolver = 3001;
 
+constexpr int menuSettingsSafetyCap = 4001;
+constexpr int menuSettingsCpu = 4002;
+constexpr int menuSettingsQuality = 4003;
+
 } // namespace nest::uiid

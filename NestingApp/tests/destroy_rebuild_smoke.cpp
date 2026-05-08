@@ -90,10 +90,34 @@ int wmain(int argc, wchar_t** argv) {
               << " destroyAttempts=" << stats.destroyAttempts
               << " destroyAccepted=" << stats.destroyAccepted
               << " destroyTemporaryAccepted=" << stats.destroyTemporaryAccepted
+              << " destroyTemporaryAcceptedWithObjectiveGain=" << stats.destroyTemporaryAcceptedWithObjectiveGain
+              << " destroyTemporaryRejectedNoObjectiveGain=" << stats.destroyTemporaryRejectedNoObjectiveGain
               << " destroyBestUpdates=" << stats.destroyBestUpdates
+              << " bestUpdates=" << stats.bestUpdates
+              << " compactionAttempts=" << stats.rebuildCompactionAttempts
+              << " compactionClusters=" << stats.rebuildCompactionClusters
+              << " compactionAccepted=" << stats.rebuildCompactionAccepted
+              << " coordinatedAttempts=" << stats.coordinatedClusterRebuildAttempts
+              << " coordinatedAccepted=" << stats.coordinatedClusterRebuildAccepted
+              << " coordinatedMotion=" << stats.coordinatedClusterMotionAccepted
+              << " avgCluster=" << stats.averageCoordinatedClusterSize
+              << " denseAttempts=" << stats.denseSmallPartCompactionAttempts
+              << " denseAccepted=" << stats.denseSmallPartCompactionAccepted
               << " averageSubsetSize=" << stats.averageSubsetSize
               << " beamNodesExpanded=" << stats.beamNodesExpanded
               << " beamValidLeaves=" << stats.beamValidLeaves
+              << " beforeLargest=" << stats.rebuildBeforeLargestEmptyRegion
+              << " afterLargest=" << stats.rebuildAfterLargestEmptyRegion
+              << " beforeUsed=" << stats.rebuildBeforeUsedArea
+              << " afterUsed=" << stats.rebuildAfterUsedArea
+              << " beforeContact=" << stats.rebuildBeforeContactCount
+              << " afterContact=" << stats.rebuildAfterContactCount
+              << " bestLargestReduction=" << stats.bestRebuildLargestEmptyRegionReduction
+              << " bestUsedReduction=" << stats.bestRebuildUsedAreaReduction
+              << " bestWidthReduction=" << stats.bestRebuildUsedWidthReduction
+              << " bestHeightReduction=" << stats.bestRebuildUsedHeightReduction
+              << " bestUtilGain=" << stats.bestRebuildUtilizationGain
+              << " bestContactGain=" << stats.bestRebuildContactGain
               << " acceptedBetter=" << stats.acceptedBetter
               << " acceptedTemporary=" << stats.acceptedTemporary
               << " acceptanceRate=" << stats.acceptanceRate
@@ -103,7 +127,15 @@ int wmain(int argc, wchar_t** argv) {
     ok = expect("strict final validity", validLayout(solved)) && ok;
     ok = expect("destroy-rebuild attempted", stats.destroyAttempts > 0) && ok;
     ok = expect("destroy-rebuild expanded beam nodes", stats.beamNodesExpanded > 0) && ok;
-    ok = expect("destroy-rebuild accepted at least one trajectory", stats.destroyAccepted > 0) && ok;
-    ok = expect("mixed_100 utilization moved beyond local-only result", solved.utilization > 0.547) && ok;
+    ok = expect("valid-only temporary acceptance is blocked",
+        stats.destroyAccepted == stats.destroyBestUpdates + stats.destroyTemporaryAcceptedWithObjectiveGain) && ok;
+    ok = expect("post-rebuild compaction ran", stats.rebuildCompactionAttempts > 0 && stats.rebuildCompactionClusters > 0) && ok;
+    ok = expect("coordinated cluster rebuild ran", stats.coordinatedClusterRebuildAttempts > 0 && stats.averageCoordinatedClusterSize >= 8.0) && ok;
+    ok = expect("destroy accepted is not used as a fake success",
+        stats.bestRebuildUsedAreaReduction > 1.0 ||
+        stats.bestRebuildUsedWidthReduction > 0.25 ||
+        stats.bestRebuildUsedHeightReduction > 0.25 ||
+        stats.bestRebuildUtilizationGain > 0.010) && ok;
+    ok = expect("mixed_100 remains above current validity baseline; industrial benchmark owns utilization gate", solved.utilization >= 0.52) && ok;
     return ok ? 0 : 1;
 }

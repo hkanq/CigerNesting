@@ -48,6 +48,10 @@ add_executable(CigerNestingSolverQualitySmoke
     geometry/spatial_grid.cpp
     engine/acceptance.cpp
     engine/analytic_contact_candidate.cpp
+    engine/contact_candidate_provider.cpp
+    engine/nfp_cache.cpp
+    engine/nfp_candidate_provider.cpp
+    engine/inner_fit_candidate_provider.cpp
     engine/adaptive_acceptance.cpp
     engine/destroy_rebuild.cpp
     engine/constructive_rebuild_engine.cpp
@@ -117,6 +121,10 @@ add_executable(CigerNestingPerformanceStressSmoke
     geometry/transformed_shape.cpp
     engine/acceptance.cpp
     engine/analytic_contact_candidate.cpp
+    engine/contact_candidate_provider.cpp
+    engine/nfp_cache.cpp
+    engine/nfp_candidate_provider.cpp
+    engine/inner_fit_candidate_provider.cpp
     engine/adaptive_acceptance.cpp
     engine/destroy_rebuild.cpp
     engine/constructive_rebuild_engine.cpp
@@ -220,6 +228,10 @@ add_executable(CigerNestingEscapeSmoke
     geometry/transformed_shape.cpp
     engine/acceptance.cpp
     engine/analytic_contact_candidate.cpp
+    engine/contact_candidate_provider.cpp
+    engine/nfp_cache.cpp
+    engine/nfp_candidate_provider.cpp
+    engine/inner_fit_candidate_provider.cpp
     engine/broadphase.cpp
     engine/escape_search.cpp
     engine/frontier_analyzer.cpp
@@ -254,6 +266,10 @@ add_executable(CigerNestingBenchmarkRunner
     geometry/spatial_grid.cpp
     engine/acceptance.cpp
     engine/analytic_contact_candidate.cpp
+    engine/contact_candidate_provider.cpp
+    engine/nfp_cache.cpp
+    engine/nfp_candidate_provider.cpp
+    engine/inner_fit_candidate_provider.cpp
     engine/adaptive_acceptance.cpp
     engine/destroy_rebuild.cpp
     engine/constructive_rebuild_engine.cpp
@@ -305,6 +321,10 @@ add_executable(CigerNestingLargeScaleQualitySmoke
     geometry/spatial_grid.cpp
     engine/acceptance.cpp
     engine/analytic_contact_candidate.cpp
+    engine/contact_candidate_provider.cpp
+    engine/nfp_cache.cpp
+    engine/nfp_candidate_provider.cpp
+    engine/inner_fit_candidate_provider.cpp
     engine/adaptive_acceptance.cpp
     engine/destroy_rebuild.cpp
     engine/constructive_rebuild_engine.cpp
@@ -356,6 +376,10 @@ add_executable(CigerNestingSolver500MaxSpacing0Smoke
     geometry/spatial_grid.cpp
     engine/acceptance.cpp
     engine/analytic_contact_candidate.cpp
+    engine/contact_candidate_provider.cpp
+    engine/nfp_cache.cpp
+    engine/nfp_candidate_provider.cpp
+    engine/inner_fit_candidate_provider.cpp
     engine/adaptive_acceptance.cpp
     engine/destroy_rebuild.cpp
     engine/constructive_rebuild_engine.cpp
@@ -407,6 +431,10 @@ add_executable(CigerNestingAdaptivePartNeedSmoke
     geometry/spatial_grid.cpp
     engine/acceptance.cpp
     engine/analytic_contact_candidate.cpp
+    engine/contact_candidate_provider.cpp
+    engine/nfp_cache.cpp
+    engine/nfp_candidate_provider.cpp
+    engine/inner_fit_candidate_provider.cpp
     engine/adaptive_acceptance.cpp
     engine/destroy_rebuild.cpp
     engine/constructive_rebuild_engine.cpp
@@ -454,6 +482,10 @@ add_executable(CigerNestingNoGlobalModeSmoke
     geometry/transformed_shape.cpp
     engine/acceptance.cpp
     engine/analytic_contact_candidate.cpp
+    engine/contact_candidate_provider.cpp
+    engine/nfp_cache.cpp
+    engine/nfp_candidate_provider.cpp
+    engine/inner_fit_candidate_provider.cpp
     engine/adaptive_acceptance.cpp
     engine/destroy_rebuild.cpp
     engine/constructive_rebuild_engine.cpp
@@ -505,6 +537,10 @@ add_executable(CigerNestingNoBBoxShelfSmoke
     geometry/spatial_grid.cpp
     engine/acceptance.cpp
     engine/analytic_contact_candidate.cpp
+    engine/contact_candidate_provider.cpp
+    engine/nfp_cache.cpp
+    engine/nfp_candidate_provider.cpp
+    engine/inner_fit_candidate_provider.cpp
     engine/adaptive_acceptance.cpp
     engine/destroy_rebuild.cpp
     engine/constructive_rebuild_engine.cpp
@@ -547,6 +583,10 @@ add_executable(CigerNestingConvergenceSmoke
     geometry/transformed_shape.cpp
     engine/acceptance.cpp
     engine/analytic_contact_candidate.cpp
+    engine/contact_candidate_provider.cpp
+    engine/nfp_cache.cpp
+    engine/nfp_candidate_provider.cpp
+    engine/inner_fit_candidate_provider.cpp
     engine/adaptive_acceptance.cpp
     engine/destroy_rebuild.cpp
     engine/constructive_rebuild_engine.cpp
@@ -590,6 +630,10 @@ add_executable(CigerNestingContourInterlockSmoke
     geometry/transformed_shape.cpp
     engine/acceptance.cpp
     engine/analytic_contact_candidate.cpp
+    engine/contact_candidate_provider.cpp
+    engine/nfp_cache.cpp
+    engine/nfp_candidate_provider.cpp
+    engine/inner_fit_candidate_provider.cpp
     engine/adaptive_acceptance.cpp
     engine/destroy_rebuild.cpp
     engine/constructive_rebuild_engine.cpp
@@ -641,6 +685,10 @@ add_executable(CigerNestingIndustrialQualitySmoke
     geometry/spatial_grid.cpp
     engine/acceptance.cpp
     engine/analytic_contact_candidate.cpp
+    engine/contact_candidate_provider.cpp
+    engine/nfp_cache.cpp
+    engine/nfp_candidate_provider.cpp
+    engine/inner_fit_candidate_provider.cpp
     engine/adaptive_acceptance.cpp
     engine/destroy_rebuild.cpp
     engine/constructive_rebuild_engine.cpp
@@ -692,6 +740,10 @@ add_executable(CigerNestingLocalRegionRepackSmoke
     geometry/spatial_grid.cpp
     engine/acceptance.cpp
     engine/analytic_contact_candidate.cpp
+    engine/contact_candidate_provider.cpp
+    engine/nfp_cache.cpp
+    engine/nfp_candidate_provider.cpp
+    engine/inner_fit_candidate_provider.cpp
     engine/adaptive_acceptance.cpp
     engine/destroy_rebuild.cpp
     engine/constructive_rebuild_engine.cpp
@@ -743,6 +795,10 @@ add_executable(CigerNestingFitCandidateGenerationSmoke
     geometry/spatial_grid.cpp
     engine/acceptance.cpp
     engine/analytic_contact_candidate.cpp
+    engine/contact_candidate_provider.cpp
+    engine/nfp_cache.cpp
+    engine/nfp_candidate_provider.cpp
+    engine/inner_fit_candidate_provider.cpp
     engine/adaptive_acceptance.cpp
     engine/destroy_rebuild.cpp
     engine/constructive_rebuild_engine.cpp
@@ -794,6 +850,10 @@ add_executable(CigerNestingAnalyticContactCandidateSmoke
     geometry/spatial_grid.cpp
     engine/acceptance.cpp
     engine/analytic_contact_candidate.cpp
+    engine/contact_candidate_provider.cpp
+    engine/nfp_cache.cpp
+    engine/nfp_candidate_provider.cpp
+    engine/inner_fit_candidate_provider.cpp
     engine/adaptive_acceptance.cpp
     engine/destroy_rebuild.cpp
     engine/constructive_rebuild_engine.cpp
@@ -863,12 +923,17 @@ add_executable(CigerNestingDestroyRebuildSmoke
     engine/acceptance.cpp
     engine/adaptive_acceptance.cpp
     engine/analytic_contact_candidate.cpp
+    engine/contact_candidate_provider.cpp
+    engine/nfp_cache.cpp
+    engine/nfp_candidate_provider.cpp
+    engine/inner_fit_candidate_provider.cpp
     engine/adaptive_optimizer.cpp
     engine/aggressive_gap_filler.cpp
     engine/broadphase.cpp
     engine/compression.cpp
     engine/contact_packing.cpp
     engine/convergence.cpp
+    engine/constructive_rebuild_engine.cpp
     engine/destroy_rebuild.cpp
     engine/empty_space_map.cpp
     engine/escape_search.cpp
@@ -913,6 +978,10 @@ add_executable(CigerNestingConstructiveRebuildSmoke
     engine/acceptance.cpp
     engine/adaptive_acceptance.cpp
     engine/analytic_contact_candidate.cpp
+    engine/contact_candidate_provider.cpp
+    engine/nfp_cache.cpp
+    engine/nfp_candidate_provider.cpp
+    engine/inner_fit_candidate_provider.cpp
     engine/adaptive_optimizer.cpp
     engine/aggressive_gap_filler.cpp
     engine/broadphase.cpp
@@ -969,6 +1038,57 @@ add_executable(CigerNestingDirtyRegionRenderSmoke
 
 add_executable(CigerNestingMultiPartConstructiveQualitySmoke
     tests/multi_part_constructive_quality_smoke.cpp
+    import/importer.cpp
+    import/svg_parser.cpp
+    import/plt_parser.cpp
+    import/dxf_parser.cpp
+    geometry/arc.cpp
+    geometry/bezier.cpp
+    geometry/clearance.cpp
+    geometry/flatten.cpp
+    geometry/winding.cpp
+    geometry/polygon_utils.cpp
+    geometry/collision.cpp
+    geometry/transformed_shape.cpp
+    geometry/spatial_grid.cpp
+    engine/acceptance.cpp
+    engine/adaptive_acceptance.cpp
+    engine/analytic_contact_candidate.cpp
+    engine/contact_candidate_provider.cpp
+    engine/nfp_cache.cpp
+    engine/nfp_candidate_provider.cpp
+    engine/inner_fit_candidate_provider.cpp
+    engine/adaptive_optimizer.cpp
+    engine/aggressive_gap_filler.cpp
+    engine/broadphase.cpp
+    engine/compression.cpp
+    engine/contact_packing.cpp
+    engine/convergence.cpp
+    engine/constructive_rebuild_engine.cpp
+    engine/destroy_rebuild.cpp
+    engine/empty_space_map.cpp
+    engine/escape_search.cpp
+    engine/frontier_analyzer.cpp
+    engine/free_space_analyzer.cpp
+    engine/gap_filling.cpp
+    engine/guided_local_search.cpp
+    engine/layout_eval_cache.cpp
+    engine/layout_score.cpp
+    engine/layout_score_components.cpp
+    engine/layout_state.cpp
+    engine/local_region_repack.cpp
+    engine/multi_start_solver.cpp
+    engine/overlap_resolver.cpp
+    engine/parallel_collision_evaluator.cpp
+    engine/penalty_system.cpp
+    engine/pose_sampler.cpp
+    engine/rearrangement.cpp
+    engine/region_repack.cpp
+    engine/slide_to_contact.cpp
+    engine/small_part_filler.cpp
+    engine/tabu_memory.cpp
+    engine/ultra_refinement.cpp
+    engine/worker_pool.cpp
 )
 
 add_executable(CigerNestingPlacementStartSmoke
@@ -977,6 +1097,154 @@ add_executable(CigerNestingPlacementStartSmoke
 
 add_executable(CigerNestingFakeStatsGuardSmoke
     tests/fake_stats_guard_smoke.cpp
+)
+
+add_executable(CigerNestingActiveContactDepthSmoke
+    tests/active_contact_depth_smoke.cpp
+)
+
+add_executable(CigerNestingBeamSearchQualitySmoke
+    tests/beam_search_quality_smoke.cpp
+)
+
+add_executable(CigerNestingBenchmarkConsistencySmoke
+    tests/benchmark_consistency_smoke.cpp
+)
+
+add_executable(CigerNestingRebuildObjectiveSmoke
+    tests/rebuild_objective_smoke.cpp
+)
+
+add_executable(CigerNestingDestroyBestUpdateSmoke
+    tests/destroy_best_update_smoke.cpp
+)
+
+add_executable(CigerNestingTemporaryAcceptanceGuardSmoke
+    tests/temporary_acceptance_guard_smoke.cpp
+)
+
+set(CIGER_CLUSTER_SMOKE_ENGINE_SOURCES
+    import/importer.cpp
+    import/svg_parser.cpp
+    import/plt_parser.cpp
+    import/dxf_parser.cpp
+    geometry/arc.cpp
+    geometry/bezier.cpp
+    geometry/clearance.cpp
+    geometry/flatten.cpp
+    geometry/winding.cpp
+    geometry/polygon_utils.cpp
+    geometry/collision.cpp
+    geometry/transformed_shape.cpp
+    geometry/spatial_grid.cpp
+    engine/acceptance.cpp
+    engine/adaptive_acceptance.cpp
+    engine/analytic_contact_candidate.cpp
+    engine/contact_candidate_provider.cpp
+    engine/nfp_cache.cpp
+    engine/nfp_candidate_provider.cpp
+    engine/inner_fit_candidate_provider.cpp
+    engine/adaptive_optimizer.cpp
+    engine/aggressive_gap_filler.cpp
+    engine/broadphase.cpp
+    engine/compression.cpp
+    engine/contact_packing.cpp
+    engine/convergence.cpp
+    engine/constructive_rebuild_engine.cpp
+    engine/destroy_rebuild.cpp
+    engine/empty_space_map.cpp
+    engine/escape_search.cpp
+    engine/frontier_analyzer.cpp
+    engine/free_space_analyzer.cpp
+    engine/gap_filling.cpp
+    engine/guided_local_search.cpp
+    engine/layout_eval_cache.cpp
+    engine/layout_score.cpp
+    engine/layout_score_components.cpp
+    engine/layout_state.cpp
+    engine/local_region_repack.cpp
+    engine/multi_start_solver.cpp
+    engine/overlap_resolver.cpp
+    engine/parallel_collision_evaluator.cpp
+    engine/penalty_system.cpp
+    engine/pose_sampler.cpp
+    engine/rearrangement.cpp
+    engine/region_repack.cpp
+    engine/slide_to_contact.cpp
+    engine/small_part_filler.cpp
+    engine/tabu_memory.cpp
+    engine/ultra_refinement.cpp
+    engine/worker_pool.cpp
+)
+
+add_executable(CigerNestingClusterCompactionSmoke
+    tests/cluster_compaction_smoke.cpp
+    ${CIGER_CLUSTER_SMOKE_ENGINE_SOURCES}
+)
+
+add_executable(CigerNestingCoordinatedClusterMotionSmoke
+    tests/coordinated_cluster_motion_smoke.cpp
+    ${CIGER_CLUSTER_SMOKE_ENGINE_SOURCES}
+)
+
+add_executable(CigerNestingDenseSmallPartCompactionSmoke
+    tests/dense_small_part_compaction_smoke.cpp
+    ${CIGER_CLUSTER_SMOKE_ENGINE_SOURCES}
+)
+
+add_executable(CigerNestingPartialClusterStateSmoke
+    tests/partial_cluster_state_smoke.cpp
+    ${CIGER_CLUSTER_SMOKE_ENGINE_SOURCES}
+)
+
+set(CIGER_NFP_PROVIDER_SMOKE_SOURCES
+    geometry/clearance.cpp
+    geometry/collision.cpp
+    geometry/transformed_shape.cpp
+    engine/analytic_contact_candidate.cpp
+    engine/contact_candidate_provider.cpp
+    engine/nfp_cache.cpp
+    engine/nfp_candidate_provider.cpp
+    engine/inner_fit_candidate_provider.cpp
+)
+
+add_executable(CigerNestingNfpCandidateProviderSmoke
+    tests/nfp_candidate_provider_smoke.cpp
+    ${CIGER_NFP_PROVIDER_SMOKE_SOURCES}
+)
+
+add_executable(CigerNestingInnerFitCandidateProviderSmoke
+    tests/inner_fit_candidate_provider_smoke.cpp
+    ${CIGER_NFP_PROVIDER_SMOKE_SOURCES}
+)
+
+add_executable(CigerNestingNfpCacheSmoke
+    tests/nfp_cache_smoke.cpp
+    ${CIGER_NFP_PROVIDER_SMOKE_SOURCES}
+)
+
+add_executable(CigerNestingHoleAwareNfpSmoke
+    tests/hole_aware_nfp_smoke.cpp
+    ${CIGER_NFP_PROVIDER_SMOKE_SOURCES}
+)
+
+add_executable(CigerNestingContourLockingNfpSmoke
+    tests/contour_locking_nfp_smoke.cpp
+    ${CIGER_NFP_PROVIDER_SMOKE_SOURCES}
+)
+
+add_executable(CigerNestingNfpConstructiveRebuildSmoke
+    tests/nfp_constructive_rebuild_smoke.cpp
+    ${CIGER_CLUSTER_SMOKE_ENGINE_SOURCES}
+)
+
+add_executable(CigerNestingDenseNfpPackingSmoke
+    tests/dense_nfp_packing_smoke.cpp
+    ${CIGER_CLUSTER_SMOKE_ENGINE_SOURCES}
+)
+
+add_executable(CigerNestingClusterReinsertQualitySmoke
+    tests/cluster_reinsert_quality_smoke.cpp
 )
 
 target_include_directories(CigerNestingGeometryCollisionSmoke PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
@@ -1045,6 +1313,42 @@ target_include_directories(CigerNestingPlacementStartSmoke PRIVATE "${CMAKE_CURR
 target_compile_definitions(CigerNestingPlacementStartSmoke PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
 target_include_directories(CigerNestingFakeStatsGuardSmoke PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_definitions(CigerNestingFakeStatsGuardSmoke PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
+target_include_directories(CigerNestingActiveContactDepthSmoke PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_definitions(CigerNestingActiveContactDepthSmoke PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
+target_include_directories(CigerNestingBeamSearchQualitySmoke PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_definitions(CigerNestingBeamSearchQualitySmoke PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
+target_include_directories(CigerNestingBenchmarkConsistencySmoke PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_definitions(CigerNestingBenchmarkConsistencySmoke PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
+target_include_directories(CigerNestingRebuildObjectiveSmoke PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_definitions(CigerNestingRebuildObjectiveSmoke PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
+target_include_directories(CigerNestingDestroyBestUpdateSmoke PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_definitions(CigerNestingDestroyBestUpdateSmoke PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
+target_include_directories(CigerNestingTemporaryAcceptanceGuardSmoke PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_definitions(CigerNestingTemporaryAcceptanceGuardSmoke PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
+target_include_directories(CigerNestingClusterCompactionSmoke PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_definitions(CigerNestingClusterCompactionSmoke PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
+target_include_directories(CigerNestingCoordinatedClusterMotionSmoke PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_definitions(CigerNestingCoordinatedClusterMotionSmoke PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
+target_include_directories(CigerNestingDenseSmallPartCompactionSmoke PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_definitions(CigerNestingDenseSmallPartCompactionSmoke PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
+target_include_directories(CigerNestingPartialClusterStateSmoke PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_definitions(CigerNestingPartialClusterStateSmoke PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
+target_include_directories(CigerNestingNfpCandidateProviderSmoke PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_definitions(CigerNestingNfpCandidateProviderSmoke PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
+target_include_directories(CigerNestingInnerFitCandidateProviderSmoke PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_definitions(CigerNestingInnerFitCandidateProviderSmoke PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
+target_include_directories(CigerNestingNfpCacheSmoke PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_definitions(CigerNestingNfpCacheSmoke PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
+target_include_directories(CigerNestingHoleAwareNfpSmoke PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_definitions(CigerNestingHoleAwareNfpSmoke PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
+target_include_directories(CigerNestingContourLockingNfpSmoke PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_definitions(CigerNestingContourLockingNfpSmoke PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
+target_include_directories(CigerNestingNfpConstructiveRebuildSmoke PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_definitions(CigerNestingNfpConstructiveRebuildSmoke PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
+target_include_directories(CigerNestingDenseNfpPackingSmoke PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_definitions(CigerNestingDenseNfpPackingSmoke PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
+target_include_directories(CigerNestingClusterReinsertQualitySmoke PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_definitions(CigerNestingClusterReinsertQualitySmoke PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
 
 if(MSVC)
     target_compile_options(CigerNesting PRIVATE /W4 /permissive- /EHsc /utf-8)
@@ -1081,6 +1385,24 @@ if(MSVC)
     target_compile_options(CigerNestingMultiPartConstructiveQualitySmoke PRIVATE /W4 /permissive- /EHsc /utf-8)
     target_compile_options(CigerNestingPlacementStartSmoke PRIVATE /W4 /permissive- /EHsc /utf-8)
     target_compile_options(CigerNestingFakeStatsGuardSmoke PRIVATE /W4 /permissive- /EHsc /utf-8)
+    target_compile_options(CigerNestingActiveContactDepthSmoke PRIVATE /W4 /permissive- /EHsc /utf-8)
+    target_compile_options(CigerNestingBeamSearchQualitySmoke PRIVATE /W4 /permissive- /EHsc /utf-8)
+    target_compile_options(CigerNestingBenchmarkConsistencySmoke PRIVATE /W4 /permissive- /EHsc /utf-8)
+    target_compile_options(CigerNestingRebuildObjectiveSmoke PRIVATE /W4 /permissive- /EHsc /utf-8)
+    target_compile_options(CigerNestingDestroyBestUpdateSmoke PRIVATE /W4 /permissive- /EHsc /utf-8)
+    target_compile_options(CigerNestingTemporaryAcceptanceGuardSmoke PRIVATE /W4 /permissive- /EHsc /utf-8)
+    target_compile_options(CigerNestingClusterCompactionSmoke PRIVATE /W4 /permissive- /EHsc /utf-8)
+    target_compile_options(CigerNestingCoordinatedClusterMotionSmoke PRIVATE /W4 /permissive- /EHsc /utf-8)
+    target_compile_options(CigerNestingDenseSmallPartCompactionSmoke PRIVATE /W4 /permissive- /EHsc /utf-8)
+    target_compile_options(CigerNestingPartialClusterStateSmoke PRIVATE /W4 /permissive- /EHsc /utf-8)
+    target_compile_options(CigerNestingNfpCandidateProviderSmoke PRIVATE /W4 /permissive- /EHsc /utf-8)
+    target_compile_options(CigerNestingInnerFitCandidateProviderSmoke PRIVATE /W4 /permissive- /EHsc /utf-8)
+    target_compile_options(CigerNestingNfpCacheSmoke PRIVATE /W4 /permissive- /EHsc /utf-8)
+    target_compile_options(CigerNestingHoleAwareNfpSmoke PRIVATE /W4 /permissive- /EHsc /utf-8)
+    target_compile_options(CigerNestingContourLockingNfpSmoke PRIVATE /W4 /permissive- /EHsc /utf-8)
+    target_compile_options(CigerNestingNfpConstructiveRebuildSmoke PRIVATE /W4 /permissive- /EHsc /utf-8)
+    target_compile_options(CigerNestingDenseNfpPackingSmoke PRIVATE /W4 /permissive- /EHsc /utf-8)
+    target_compile_options(CigerNestingClusterReinsertQualitySmoke PRIVATE /W4 /permissive- /EHsc /utf-8)
 else()
     target_compile_options(CigerNesting PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_options(CigerNestingGeometryCollisionSmoke PRIVATE -Wall -Wextra -Wpedantic)
@@ -1116,7 +1438,26 @@ else()
     target_compile_options(CigerNestingMultiPartConstructiveQualitySmoke PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_options(CigerNestingPlacementStartSmoke PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_options(CigerNestingFakeStatsGuardSmoke PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(CigerNestingActiveContactDepthSmoke PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(CigerNestingBeamSearchQualitySmoke PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(CigerNestingBenchmarkConsistencySmoke PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(CigerNestingRebuildObjectiveSmoke PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(CigerNestingDestroyBestUpdateSmoke PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(CigerNestingTemporaryAcceptanceGuardSmoke PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(CigerNestingClusterCompactionSmoke PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(CigerNestingCoordinatedClusterMotionSmoke PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(CigerNestingDenseSmallPartCompactionSmoke PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(CigerNestingPartialClusterStateSmoke PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(CigerNestingNfpCandidateProviderSmoke PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(CigerNestingInnerFitCandidateProviderSmoke PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(CigerNestingNfpCacheSmoke PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(CigerNestingHoleAwareNfpSmoke PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(CigerNestingContourLockingNfpSmoke PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(CigerNestingNfpConstructiveRebuildSmoke PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(CigerNestingDenseNfpPackingSmoke PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(CigerNestingClusterReinsertQualitySmoke PRIVATE -Wall -Wextra -Wpedantic)
 endif()
+
 
 
 
