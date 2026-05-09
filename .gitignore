@@ -1,5 +1,44 @@
+﻿# Build directories
 build/
-.vs/
 outputs/
+.vs/
+x64/
+Debug/
+Release/
+
+# MSVC/CMake build artifacts
+*.exe
+*.obj
+*.pdb
+*.ilk
+*.lib
+*.dll
+*.exp
+*.idb
+*.ipdb
+*.iobj
+*.tlog
+*.lastbuildstate
+*.vcxproj.user
 *.user
 *.suo
+
+# Archives and temporary packages
+*.zip
+*.7z
+*.rar
+
+# Generated nesting/benchmark exports
+*.cignest.json
+*.result.svg
+
+# Logs and temporary files
+*.log
+*.tmp
+*.bak
+*.old
+*.orig
+
+# OS/editor noise
+Thumbs.db
+.DS_Store

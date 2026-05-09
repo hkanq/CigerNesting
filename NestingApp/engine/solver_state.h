@@ -127,9 +127,12 @@ struct SolverStats {
     size_t nfpCandidatesGenerated = 0;
     size_t nfpCandidatesValid = 0;
     size_t nfpCandidatesAccepted = 0;
+    size_t nfpLoopsGenerated = 0;
+    size_t nfpLoopCandidatesGenerated = 0;
     size_t ifpCandidatesGenerated = 0;
     size_t ifpCandidatesValid = 0;
     size_t ifpCandidatesAccepted = 0;
+    size_t ifpLoopsGenerated = 0;
     size_t nfpCacheHits = 0;
     size_t nfpCacheMisses = 0;
     size_t contactCandidatesRejectedCollision = 0;

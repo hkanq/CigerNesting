@@ -2,6 +2,7 @@
 
 #include "engine/contact_candidate_provider.h"
 #include "engine/nfp_cache.h"
+#include "engine/nfp_solver_cache.h"
 
 namespace nest {
 
@@ -39,6 +40,9 @@ public:
 
 private:
     mutable NfpCache cache_;
+    mutable NfpSolverCache solverCache_;
 };
 
 } // namespace nest
+
+

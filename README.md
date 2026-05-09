@@ -374,7 +374,7 @@ Each accepted refinement must improve score and remain valid: no part collision,
 
 ## Constructive Rebuild Engine
 
-`Maximum` quality now treats constructive rebuild as the main quality search, not as a shallow post-pass. The engine targets empty regions, low-contact clusters, and boundary contributors, then rebuilds multi-part subsets with analytic contour-contact candidates. The current analytic provider goes through `IContactCandidateProvider`, so a future NFP/IFP provider can replace or augment it without wiring the main solver directly to one candidate implementation.
+`Maximum` quality treats constructive rebuild as the main quality search, not as a shallow post-pass. The engine targets empty regions, low-contact clusters, and boundary contributors, then rebuilds multi-part subsets through the `IContactCandidateProvider` chain. The provider chain now starts with real NFP/IFP geometry primitives: conservative polygon offset, Minkowski-sum based no-fit loops, rectangular-sheet inner-fit regions, and a pairwise NFP solver cache. Analytic contact candidates remain as a fallback, not the primary industrial path.
 
 Current defaults favor industrial solving:
 
@@ -385,28 +385,29 @@ Current defaults favor industrial solving:
 - `timeLimitSeconds = 0`, meaning auto convergence with positive values used only as a safety cap
 - `cpuThreadCount = 0`, meaning profile-driven maximum/automatic CPU selection
 
-NFP/IFP preparation checklist:
+NFP/IFP implementation status and next checklist:
 
-1. robust polygon offset prerequisite
-2. Minkowski sum support
-3. no-fit polygon generation
-4. inner-fit polygon generation for sheet boundaries
-5. holes and forbidden-zone handling
-6. rotation/mirror candidate cache
-7. pairwise NFP cache behind `IContactCandidateProvider`
+1. conservative polygon offset v1 is present and exact clearance validation remains the final gate
+2. Minkowski sum support is present for convex polygons and concave polygons via ear-clipping component decomposition
+3. no-fit polygon generation now produces boundary/component loops rather than only vertex-edge anchors
+4. rectangular-sheet inner-fit polygon generation is exact for translated part origins
+5. custom sheets, holes, and forbidden zones still use conservative candidate generation plus exact validation fallback
+6. rotation/mirror candidate cache is bucketed; `0.001°` refinement remains local, not global NFP brute force
+7. pairwise NFP solver cache is behind the provider path; future work should add polygon-union cleanup for concave Minkowski components
 
 ## Known Gaps
 
-- Clearance is conservative segment-distance validation, not true polygon offset.
+- Clearance final validation is exact segment-distance based; polygon offset v1 is currently used conservatively for candidate generation, not as the sole validity source.
 - DXF/PLT import support is intentionally small and ASCII-oriented.
 - Custom sheet containment is stronger for concave boundaries, holes, and forbidden zones, but sheet margin is still conservative and not a true inward offset.
 - User placement points are model/engine-ready, but canvas click editing is not enabled yet.
 - Ultra refinement is active, but it is intentionally local and prioritized; it is not a full continuous nonlinear optimizer.
 - Direct2D, GPU evaluation, AI import, and Corel macro installation are intentionally not implemented yet.
-- The solver is now collision-driven v1 with parallel multi-start, but contact candidates are still geometric heuristics rather than a full NFP engine.
+- Real NFP/IFP geometry primitives are now present, but concave NFP still returns decomposed component loops instead of a union-cleaned final loop set, so industrial quality targets may still report `QUALITY_FAIL`.
 - Gap filling is hole-aware and concavity-aware, but concavity detection is currently based on local reflex vertices rather than a full medial-axis/free-space decomposition.
 - Rearrangement uses bounded swap/ejection/cluster heuristics with multi-part delta pre-evaluation. It is not yet a full combinatorial optimizer.
 - Adaptive search currently applies annealing to single-part delta moves; multi-part adaptive acceptance still uses full-score safety checks and bounded escape heuristics.
 - Performance stress smoke is bounded and deterministic; it is not a substitute for long industrial benchmark runs.
 - Benchmark runner uses deterministic single-thread settings, so its `candidatesPerSecond` is for regression comparison rather than peak CPU throughput.
 - Multi-part delta scoring is active for bounded coupled moves, but accepted moves still require full verification. Future work can extend the same cache model to deeper chain planning and GPU candidate evaluation.
+

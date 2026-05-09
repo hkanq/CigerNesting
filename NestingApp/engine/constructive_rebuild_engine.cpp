@@ -1339,6 +1339,7 @@ std::vector<ClusterCandidateChoice> generateClusterCandidateChoices(
         appendGenerated(ifpProvider.generatePartSheetCandidates(document, settings, state.poses, request, &ifpStats));
         stats.ifpCandidatesGenerated += ifpStats.generated;
         stats.ifpCandidatesValid += ifpStats.valid;
+        stats.ifpLoopsGenerated += ifpStats.ifpLoopsGenerated;
         stats.contactCandidatesRejectedCollision += ifpStats.rejectedCollision;
         stats.contactCandidatesRejectedClearance += ifpStats.rejectedClearance;
         stats.contactCandidatesRejectedSheet += ifpStats.rejectedSheet;
@@ -1347,6 +1348,8 @@ std::vector<ClusterCandidateChoice> generateClusterCandidateChoices(
         appendGenerated(nfpProvider.generatePartPartCandidates(document, settings, state.poses, request, &nfpStats));
         stats.nfpCandidatesGenerated += nfpStats.generated;
         stats.nfpCandidatesValid += nfpStats.valid;
+        stats.nfpLoopsGenerated += nfpStats.nfpLoopsGenerated;
+        stats.nfpLoopCandidatesGenerated += nfpStats.nfpLoopCandidatesGenerated;
         stats.nfpCacheHits += nfpStats.cacheHits;
         stats.nfpCacheMisses += nfpStats.cacheMisses;
         stats.contactCandidatesRejectedCollision += nfpStats.rejectedCollision;

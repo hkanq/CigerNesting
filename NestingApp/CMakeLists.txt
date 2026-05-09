@@ -52,6 +52,11 @@ add_executable(CigerNestingSolverQualitySmoke
     engine/nfp_cache.cpp
     engine/nfp_candidate_provider.cpp
     engine/inner_fit_candidate_provider.cpp
+    engine/nfp_solver_cache.cpp
+    geometry/minkowski_sum.cpp
+    geometry/no_fit_polygon.cpp
+    geometry/inner_fit_polygon.cpp
+    geometry/polygon_offset.cpp
     engine/adaptive_acceptance.cpp
     engine/destroy_rebuild.cpp
     engine/constructive_rebuild_engine.cpp
@@ -125,6 +130,11 @@ add_executable(CigerNestingPerformanceStressSmoke
     engine/nfp_cache.cpp
     engine/nfp_candidate_provider.cpp
     engine/inner_fit_candidate_provider.cpp
+    engine/nfp_solver_cache.cpp
+    geometry/minkowski_sum.cpp
+    geometry/no_fit_polygon.cpp
+    geometry/inner_fit_polygon.cpp
+    geometry/polygon_offset.cpp
     engine/adaptive_acceptance.cpp
     engine/destroy_rebuild.cpp
     engine/constructive_rebuild_engine.cpp
@@ -232,6 +242,11 @@ add_executable(CigerNestingEscapeSmoke
     engine/nfp_cache.cpp
     engine/nfp_candidate_provider.cpp
     engine/inner_fit_candidate_provider.cpp
+    engine/nfp_solver_cache.cpp
+    geometry/minkowski_sum.cpp
+    geometry/no_fit_polygon.cpp
+    geometry/inner_fit_polygon.cpp
+    geometry/polygon_offset.cpp
     engine/broadphase.cpp
     engine/escape_search.cpp
     engine/frontier_analyzer.cpp
@@ -270,6 +285,11 @@ add_executable(CigerNestingBenchmarkRunner
     engine/nfp_cache.cpp
     engine/nfp_candidate_provider.cpp
     engine/inner_fit_candidate_provider.cpp
+    engine/nfp_solver_cache.cpp
+    geometry/minkowski_sum.cpp
+    geometry/no_fit_polygon.cpp
+    geometry/inner_fit_polygon.cpp
+    geometry/polygon_offset.cpp
     engine/adaptive_acceptance.cpp
     engine/destroy_rebuild.cpp
     engine/constructive_rebuild_engine.cpp
@@ -325,6 +345,11 @@ add_executable(CigerNestingLargeScaleQualitySmoke
     engine/nfp_cache.cpp
     engine/nfp_candidate_provider.cpp
     engine/inner_fit_candidate_provider.cpp
+    engine/nfp_solver_cache.cpp
+    geometry/minkowski_sum.cpp
+    geometry/no_fit_polygon.cpp
+    geometry/inner_fit_polygon.cpp
+    geometry/polygon_offset.cpp
     engine/adaptive_acceptance.cpp
     engine/destroy_rebuild.cpp
     engine/constructive_rebuild_engine.cpp
@@ -380,6 +405,11 @@ add_executable(CigerNestingSolver500MaxSpacing0Smoke
     engine/nfp_cache.cpp
     engine/nfp_candidate_provider.cpp
     engine/inner_fit_candidate_provider.cpp
+    engine/nfp_solver_cache.cpp
+    geometry/minkowski_sum.cpp
+    geometry/no_fit_polygon.cpp
+    geometry/inner_fit_polygon.cpp
+    geometry/polygon_offset.cpp
     engine/adaptive_acceptance.cpp
     engine/destroy_rebuild.cpp
     engine/constructive_rebuild_engine.cpp
@@ -435,6 +465,11 @@ add_executable(CigerNestingAdaptivePartNeedSmoke
     engine/nfp_cache.cpp
     engine/nfp_candidate_provider.cpp
     engine/inner_fit_candidate_provider.cpp
+    engine/nfp_solver_cache.cpp
+    geometry/minkowski_sum.cpp
+    geometry/no_fit_polygon.cpp
+    geometry/inner_fit_polygon.cpp
+    geometry/polygon_offset.cpp
     engine/adaptive_acceptance.cpp
     engine/destroy_rebuild.cpp
     engine/constructive_rebuild_engine.cpp
@@ -486,6 +521,11 @@ add_executable(CigerNestingNoGlobalModeSmoke
     engine/nfp_cache.cpp
     engine/nfp_candidate_provider.cpp
     engine/inner_fit_candidate_provider.cpp
+    engine/nfp_solver_cache.cpp
+    geometry/minkowski_sum.cpp
+    geometry/no_fit_polygon.cpp
+    geometry/inner_fit_polygon.cpp
+    geometry/polygon_offset.cpp
     engine/adaptive_acceptance.cpp
     engine/destroy_rebuild.cpp
     engine/constructive_rebuild_engine.cpp
@@ -541,6 +581,11 @@ add_executable(CigerNestingNoBBoxShelfSmoke
     engine/nfp_cache.cpp
     engine/nfp_candidate_provider.cpp
     engine/inner_fit_candidate_provider.cpp
+    engine/nfp_solver_cache.cpp
+    geometry/minkowski_sum.cpp
+    geometry/no_fit_polygon.cpp
+    geometry/inner_fit_polygon.cpp
+    geometry/polygon_offset.cpp
     engine/adaptive_acceptance.cpp
     engine/destroy_rebuild.cpp
     engine/constructive_rebuild_engine.cpp
@@ -587,6 +632,11 @@ add_executable(CigerNestingConvergenceSmoke
     engine/nfp_cache.cpp
     engine/nfp_candidate_provider.cpp
     engine/inner_fit_candidate_provider.cpp
+    engine/nfp_solver_cache.cpp
+    geometry/minkowski_sum.cpp
+    geometry/no_fit_polygon.cpp
+    geometry/inner_fit_polygon.cpp
+    geometry/polygon_offset.cpp
     engine/adaptive_acceptance.cpp
     engine/destroy_rebuild.cpp
     engine/constructive_rebuild_engine.cpp
@@ -634,6 +684,11 @@ add_executable(CigerNestingContourInterlockSmoke
     engine/nfp_cache.cpp
     engine/nfp_candidate_provider.cpp
     engine/inner_fit_candidate_provider.cpp
+    engine/nfp_solver_cache.cpp
+    geometry/minkowski_sum.cpp
+    geometry/no_fit_polygon.cpp
+    geometry/inner_fit_polygon.cpp
+    geometry/polygon_offset.cpp
     engine/adaptive_acceptance.cpp
     engine/destroy_rebuild.cpp
     engine/constructive_rebuild_engine.cpp
@@ -689,6 +744,11 @@ add_executable(CigerNestingIndustrialQualitySmoke
     engine/nfp_cache.cpp
     engine/nfp_candidate_provider.cpp
     engine/inner_fit_candidate_provider.cpp
+    engine/nfp_solver_cache.cpp
+    geometry/minkowski_sum.cpp
+    geometry/no_fit_polygon.cpp
+    geometry/inner_fit_polygon.cpp
+    geometry/polygon_offset.cpp
     engine/adaptive_acceptance.cpp
     engine/destroy_rebuild.cpp
     engine/constructive_rebuild_engine.cpp
@@ -744,6 +804,11 @@ add_executable(CigerNestingLocalRegionRepackSmoke
     engine/nfp_cache.cpp
     engine/nfp_candidate_provider.cpp
     engine/inner_fit_candidate_provider.cpp
+    engine/nfp_solver_cache.cpp
+    geometry/minkowski_sum.cpp
+    geometry/no_fit_polygon.cpp
+    geometry/inner_fit_polygon.cpp
+    geometry/polygon_offset.cpp
     engine/adaptive_acceptance.cpp
     engine/destroy_rebuild.cpp
     engine/constructive_rebuild_engine.cpp
@@ -799,6 +864,11 @@ add_executable(CigerNestingFitCandidateGenerationSmoke
     engine/nfp_cache.cpp
     engine/nfp_candidate_provider.cpp
     engine/inner_fit_candidate_provider.cpp
+    engine/nfp_solver_cache.cpp
+    geometry/minkowski_sum.cpp
+    geometry/no_fit_polygon.cpp
+    geometry/inner_fit_polygon.cpp
+    geometry/polygon_offset.cpp
     engine/adaptive_acceptance.cpp
     engine/destroy_rebuild.cpp
     engine/constructive_rebuild_engine.cpp
@@ -854,6 +924,11 @@ add_executable(CigerNestingAnalyticContactCandidateSmoke
     engine/nfp_cache.cpp
     engine/nfp_candidate_provider.cpp
     engine/inner_fit_candidate_provider.cpp
+    engine/nfp_solver_cache.cpp
+    geometry/minkowski_sum.cpp
+    geometry/no_fit_polygon.cpp
+    geometry/inner_fit_polygon.cpp
+    geometry/polygon_offset.cpp
     engine/adaptive_acceptance.cpp
     engine/destroy_rebuild.cpp
     engine/constructive_rebuild_engine.cpp
@@ -927,6 +1002,11 @@ add_executable(CigerNestingDestroyRebuildSmoke
     engine/nfp_cache.cpp
     engine/nfp_candidate_provider.cpp
     engine/inner_fit_candidate_provider.cpp
+    engine/nfp_solver_cache.cpp
+    geometry/minkowski_sum.cpp
+    geometry/no_fit_polygon.cpp
+    geometry/inner_fit_polygon.cpp
+    geometry/polygon_offset.cpp
     engine/adaptive_optimizer.cpp
     engine/aggressive_gap_filler.cpp
     engine/broadphase.cpp
@@ -982,6 +1062,11 @@ add_executable(CigerNestingConstructiveRebuildSmoke
     engine/nfp_cache.cpp
     engine/nfp_candidate_provider.cpp
     engine/inner_fit_candidate_provider.cpp
+    engine/nfp_solver_cache.cpp
+    geometry/minkowski_sum.cpp
+    geometry/no_fit_polygon.cpp
+    geometry/inner_fit_polygon.cpp
+    geometry/polygon_offset.cpp
     engine/adaptive_optimizer.cpp
     engine/aggressive_gap_filler.cpp
     engine/broadphase.cpp
@@ -1058,6 +1143,11 @@ add_executable(CigerNestingMultiPartConstructiveQualitySmoke
     engine/nfp_cache.cpp
     engine/nfp_candidate_provider.cpp
     engine/inner_fit_candidate_provider.cpp
+    engine/nfp_solver_cache.cpp
+    geometry/minkowski_sum.cpp
+    geometry/no_fit_polygon.cpp
+    geometry/inner_fit_polygon.cpp
+    geometry/polygon_offset.cpp
     engine/adaptive_optimizer.cpp
     engine/aggressive_gap_filler.cpp
     engine/broadphase.cpp
@@ -1144,6 +1234,11 @@ set(CIGER_CLUSTER_SMOKE_ENGINE_SOURCES
     engine/nfp_cache.cpp
     engine/nfp_candidate_provider.cpp
     engine/inner_fit_candidate_provider.cpp
+    engine/nfp_solver_cache.cpp
+    geometry/minkowski_sum.cpp
+    geometry/no_fit_polygon.cpp
+    geometry/inner_fit_polygon.cpp
+    geometry/polygon_offset.cpp
     engine/adaptive_optimizer.cpp
     engine/aggressive_gap_filler.cpp
     engine/broadphase.cpp
@@ -1206,6 +1301,11 @@ set(CIGER_NFP_PROVIDER_SMOKE_SOURCES
     engine/nfp_cache.cpp
     engine/nfp_candidate_provider.cpp
     engine/inner_fit_candidate_provider.cpp
+    engine/nfp_solver_cache.cpp
+    geometry/minkowski_sum.cpp
+    geometry/no_fit_polygon.cpp
+    geometry/inner_fit_polygon.cpp
+    geometry/polygon_offset.cpp
 )
 
 add_executable(CigerNestingNfpCandidateProviderSmoke
@@ -1243,6 +1343,51 @@ add_executable(CigerNestingDenseNfpPackingSmoke
     ${CIGER_CLUSTER_SMOKE_ENGINE_SOURCES}
 )
 
+add_executable(CigerNestingMinkowskiSumSmoke
+    tests/minkowski_sum_smoke.cpp
+    geometry/minkowski_sum.cpp
+)
+
+add_executable(CigerNestingNoFitPolygonSmoke
+    tests/no_fit_polygon_smoke.cpp
+    geometry/minkowski_sum.cpp
+    geometry/no_fit_polygon.cpp
+    geometry/polygon_offset.cpp
+    geometry/clearance.cpp
+    geometry/collision.cpp
+    geometry/transformed_shape.cpp
+)
+
+add_executable(CigerNestingInnerFitPolygonSmoke
+    tests/inner_fit_polygon_smoke.cpp
+    geometry/inner_fit_polygon.cpp
+    geometry/minkowski_sum.cpp
+    geometry/clearance.cpp
+    geometry/collision.cpp
+    geometry/transformed_shape.cpp
+)
+
+add_executable(CigerNestingPolygonOffsetSmoke
+    tests/polygon_offset_smoke.cpp
+    geometry/polygon_offset.cpp
+    geometry/minkowski_sum.cpp
+)
+
+add_executable(CigerNestingNfpCacheRealSmoke
+    tests/nfp_cache_real_smoke.cpp
+    geometry/minkowski_sum.cpp
+    geometry/no_fit_polygon.cpp
+    geometry/polygon_offset.cpp
+    geometry/clearance.cpp
+    geometry/collision.cpp
+    geometry/transformed_shape.cpp
+    engine/nfp_solver_cache.cpp
+)
+
+add_executable(CigerNestingNfpRebuildQualitySmoke
+    tests/nfp_rebuild_quality_smoke.cpp
+    ${CIGER_CLUSTER_SMOKE_ENGINE_SOURCES}
+)
 add_executable(CigerNestingClusterReinsertQualitySmoke
     tests/cluster_reinsert_quality_smoke.cpp
 )
@@ -1459,5 +1604,24 @@ else()
 endif()
 
 
+
+
+
+
+foreach(CIGER_REAL_NFP_TARGET
+    CigerNestingMinkowskiSumSmoke
+    CigerNestingNoFitPolygonSmoke
+    CigerNestingInnerFitPolygonSmoke
+    CigerNestingPolygonOffsetSmoke
+    CigerNestingNfpCacheRealSmoke
+    CigerNestingNfpRebuildQualitySmoke)
+    target_include_directories(${CIGER_REAL_NFP_TARGET} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+    target_compile_definitions(${CIGER_REAL_NFP_TARGET} PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
+    if(MSVC)
+        target_compile_options(${CIGER_REAL_NFP_TARGET} PRIVATE /W4 /permissive- /EHsc /utf-8)
+    else()
+        target_compile_options(${CIGER_REAL_NFP_TARGET} PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+endforeach()
 
 

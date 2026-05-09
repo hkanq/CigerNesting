@@ -2,72 +2,13 @@
 
 #include "geometry/clearance.h"
 #include "geometry/collision.h"
+#include "geometry/no_fit_polygon.h"
 #include "geometry/transformed_shape.h"
 #include <algorithm>
 #include <cmath>
 
 namespace nest {
 namespace {
-
-struct NfpFeature {
-    Vec2 point;
-    Vec2 next;
-    bool hasEdge = false;
-    bool isHole = false;
-    size_t sourcePart = static_cast<size_t>(-1);
-    int sourceRing = -1;
-};
-
-size_t usableCount(const std::vector<Vec2>& points) {
-    return points.size() > 2 && almostEqual(points.front(), points.back(), 1e-9) ? points.size() - 1u : points.size();
-}
-
-std::vector<NfpFeature> ringFeatures(const TransformedRing& ring, size_t sourcePart, int sourceRing, size_t limit) {
-    std::vector<NfpFeature> features;
-    const size_t count = usableCount(ring.points);
-    if (count == 0 || limit == 0) {
-        return features;
-    }
-    const size_t stride = std::max<size_t>(1u, count / limit);
-    for (size_t i = 0; i < count && features.size() < limit; i += stride) {
-        NfpFeature feature;
-        feature.point = ring.points[i];
-        feature.next = ring.points[(i + 1u) % count];
-        feature.hasEdge = distance(feature.point, feature.next) > 1e-9;
-        feature.isHole = ring.isHole;
-        feature.sourcePart = sourcePart;
-        feature.sourceRing = sourceRing;
-        features.push_back(feature);
-    }
-    return features;
-}
-
-std::vector<NfpFeature> partFeatures(const TransformedPart& part, size_t limitPerRing) {
-    std::vector<NfpFeature> features;
-    for (size_t ringIndex = 0; ringIndex < part.rings.size(); ++ringIndex) {
-        std::vector<NfpFeature> ring = ringFeatures(
-            part.rings[ringIndex],
-            static_cast<size_t>(std::max(0, part.partId)),
-            static_cast<int>(ringIndex),
-            part.rings[ringIndex].isHole ? limitPerRing + 4u : limitPerRing);
-        features.insert(features.end(), ring.begin(), ring.end());
-    }
-    return features;
-}
-
-Vec2 edgePoint(const NfpFeature& feature, double t) {
-    return feature.point + (feature.next - feature.point) * t;
-}
-
-Vec2 edgeNormal(const NfpFeature& feature) {
-    Vec2 dir = feature.next - feature.point;
-    const double len = dir.length();
-    if (len <= 1e-9) {
-        return {0.0, 0.0};
-    }
-    dir = dir / len;
-    return {-dir.y, dir.x};
-}
 
 bool samePose(const Pose& a, const Pose& b) {
     return a.mirrored == b.mirrored &&
@@ -143,100 +84,69 @@ void appendLocalCandidate(std::vector<NfpCachedCandidate>& out, const NfpCachedC
     }
 }
 
-NfpCacheKey makeKey(size_t moving, size_t fixed, const Pose& movingPose, const Pose& fixedPose, double spacing) {
-    NfpCacheKey key;
+NfpSolverCacheKey makeSolverKey(
+    const Document& document,
+    size_t moving,
+    size_t fixed,
+    const Pose& movingPose,
+    const Pose& fixedPose,
+    double spacing,
+    double tolerance) {
+    NfpSolverCacheKey key;
     key.movingPartId = moving;
     key.fixedPartId = fixed;
-    key.movingAngleBucket = nfpAngleBucket(movingPose.angleRadians);
-    key.fixedAngleBucket = nfpAngleBucket(fixedPose.angleRadians);
+    key.movingAngleBucket = nfpSolverAngleBucket(movingPose.angleRadians);
+    key.fixedAngleBucket = nfpSolverAngleBucket(fixedPose.angleRadians);
     key.movingMirrored = movingPose.mirrored;
     key.fixedMirrored = fixedPose.mirrored;
-    key.spacingBucket = nfpSpacingBucket(spacing);
-    key.geometryVersion = nfpGeometryVersion(moving, fixed);
+    key.spacingBucket = nfpSolverSpacingBucket(spacing);
+    key.toleranceBucket = nfpSolverToleranceBucket(tolerance);
+    key.geometryVersion = nfpSolverGeometryVersion(document.parts[moving], document.parts[fixed], moving, fixed);
     return key;
 }
 
-NfpCacheValue buildLocalNfp(
+NfpSolverCacheValue buildRealNfpLoops(
     const Document& document,
     const EngineSettings& settings,
     size_t movingPart,
     size_t fixedPart,
     const Pose& movingOrientation,
-    const Pose& fixedOrientation,
-    size_t pointLimit,
-    size_t candidateLimit) {
-    NfpCacheValue value;
-    if (movingPart >= document.parts.size() || fixedPart >= document.parts.size()) {
-        return value;
-    }
-    const TransformedPart moving = transformPart(document.parts[movingPart], movingOrientation, static_cast<int>(movingPart));
-    const TransformedPart fixed = transformPart(document.parts[fixedPart], fixedOrientation, static_cast<int>(fixedPart));
-    const std::vector<NfpFeature> movingFeatures = partFeatures(moving, pointLimit);
-    const std::vector<NfpFeature> fixedFeatures = partFeatures(fixed, pointLimit);
-    const double spacing = settings.partSpacing;
+    const Pose& fixedOrientation) {
+    NoFitPolygonOptions options;
+    options.spacing = settings.partSpacing;
+    options.tolerance = settings.collisionTolerance;
+    options.includeHoles = true;
+    return toSolverCacheValue(buildNoFitPolygon(
+        document.parts[movingPart],
+        movingOrientation,
+        document.parts[fixedPart],
+        fixedOrientation,
+        options));
+}
 
-    for (const NfpFeature& fixedFeature : fixedFeatures) {
-        for (const NfpFeature& movingFeature : movingFeatures) {
-            const AnalyticContactKind kind = fixedFeature.isHole ? AnalyticContactKind::NfpHoleBoundary : AnalyticContactKind::NfpPartPart;
-            const double basePriority = fixedFeature.isHole ? 132.0 : 112.0;
-            Pose vertexPose = movingOrientation;
-            vertexPose.x = fixedFeature.point.x - movingFeature.point.x;
-            vertexPose.y = fixedFeature.point.y - movingFeature.point.y;
-            appendLocalCandidate(value.candidates, {vertexPose, kind, fixedPart, fixedFeature.sourceRing, basePriority}, candidateLimit);
-
-            if (fixedFeature.hasEdge) {
-                const Vec2 normal = edgeNormal(fixedFeature);
-                for (double t : {0.0, 0.25, 0.50, 0.75, 1.0}) {
-                    const Vec2 fixedPoint = edgePoint(fixedFeature, t);
-                    for (double side : {-1.0, 1.0}) {
-                        Pose pose = movingOrientation;
-                        pose.x = fixedPoint.x + normal.x * spacing * side - movingFeature.point.x;
-                        pose.y = fixedPoint.y + normal.y * spacing * side - movingFeature.point.y;
-                        appendLocalCandidate(value.candidates, {pose, kind, fixedPart, fixedFeature.sourceRing, basePriority + 10.0}, candidateLimit);
-                    }
-                }
-            }
-
-            if (movingFeature.hasEdge) {
-                for (double t : {0.25, 0.50, 0.75}) {
-                    const Vec2 movingPoint = edgePoint(movingFeature, t);
-                    Pose pose = movingOrientation;
-                    pose.x = fixedFeature.point.x - movingPoint.x;
-                    pose.y = fixedFeature.point.y - movingPoint.y;
-                    appendLocalCandidate(value.candidates, {pose, kind, fixedPart, fixedFeature.sourceRing, basePriority + 7.0}, candidateLimit);
-                }
-            }
-
-            if (movingFeature.hasEdge && fixedFeature.hasEdge) {
-                Vec2 movingDir = movingFeature.next - movingFeature.point;
-                Vec2 fixedDir = fixedFeature.next - fixedFeature.point;
-                const double movingLen = movingDir.length();
-                const double fixedLen = fixedDir.length();
-                if (movingLen > 1e-9 && fixedLen > 1e-9) {
-                    movingDir = movingDir / movingLen;
-                    fixedDir = fixedDir / fixedLen;
-                    if (std::abs(dot(movingDir, fixedDir)) >= 0.90) {
-                        const Vec2 normal = edgeNormal(fixedFeature);
-                        const Vec2 fixedMid = edgePoint(fixedFeature, 0.5);
-                        const Vec2 movingMid = edgePoint(movingFeature, 0.5);
-                        for (double side : {-1.0, 1.0}) {
-                            Pose pose = movingOrientation;
-                            pose.x = fixedMid.x + normal.x * spacing * side - movingMid.x;
-                            pose.y = fixedMid.y + normal.y * spacing * side - movingMid.y;
-                            appendLocalCandidate(value.candidates, {pose, AnalyticContactKind::EdgeParallel, fixedPart, fixedFeature.sourceRing, basePriority + 18.0}, candidateLimit);
-                        }
-                    }
-                }
+void appendRealNfpLocalCandidates(
+    std::vector<NfpCachedCandidate>& out,
+    const NfpSolverCacheValue& loops,
+    const Pose& movingOrientation,
+    size_t fixedPart,
+    size_t limit,
+    Vec2 target) {
+    const NoFitPolygonResult result = toNoFitPolygonResult(loops);
+    for (const NoFitPolygonLoop& loop : result.loops) {
+        NoFitPolygonResult singleLoop;
+        singleLoop.loops.push_back(loop);
+        singleLoop.componentCount = 1;
+        std::vector<Pose> poses = sampleNoFitPolygonCandidates(singleLoop, movingOrientation, std::max<size_t>(8u, limit), target);
+        const AnalyticContactKind kind = loop.fromHole ? AnalyticContactKind::NfpHoleBoundary : AnalyticContactKind::NfpPartPart;
+        const double basePriority = loop.fromHole ? 168.0 : 150.0;
+        for (const Pose& pose : poses) {
+            const double targetDistance = distance({pose.x, pose.y}, target);
+            appendLocalCandidate(out, {pose, kind, fixedPart, -1, basePriority + (loop.exactConvex ? 8.0 : 0.0) - targetDistance * 0.001}, limit);
+            if (out.size() >= limit * 4u) {
+                return;
             }
         }
     }
-    std::stable_sort(value.candidates.begin(), value.candidates.end(), [](const NfpCachedCandidate& a, const NfpCachedCandidate& b) {
-        return a.priority > b.priority;
-    });
-    if (value.candidates.size() > candidateLimit * 3u) {
-        value.candidates.resize(candidateLimit * 3u);
-    }
-    return value;
 }
 
 void appendValidated(
@@ -291,7 +201,6 @@ std::vector<ContactCandidate> NfpCandidateProvider::generatePartPartCandidates(
         owners.resize(request.ownerLimit);
     }
 
-    const size_t pointLimit = std::max<size_t>(2u, request.perOwnerPointLimit + 2u);
     for (size_t owner : owners) {
         if (owner == request.movingPart || owner >= document.parts.size() || owner >= poses.size()) {
             continue;
@@ -304,9 +213,16 @@ std::vector<ContactCandidate> NfpCandidateProvider::generatePartPartCandidates(
                 Pose movingOrientation;
                 movingOrientation.angleRadians = angle;
                 movingOrientation.mirrored = mirrored;
-                const NfpCacheKey key = makeKey(request.movingPart, owner, movingOrientation, fixedOrientation, settings.partSpacing);
-                NfpCacheValue cached;
-                const bool hit = cache_.find(key, cached);
+                const NfpSolverCacheKey key = makeSolverKey(
+                    document,
+                    request.movingPart,
+                    owner,
+                    movingOrientation,
+                    fixedOrientation,
+                    settings.partSpacing,
+                    settings.collisionTolerance);
+                NfpSolverCacheValue cached;
+                const bool hit = solverCache_.find(key, cached);
                 if (stats != nullptr) {
                     if (hit) {
                         ++stats->cacheHits;
@@ -315,10 +231,21 @@ std::vector<ContactCandidate> NfpCandidateProvider::generatePartPartCandidates(
                     }
                 }
                 if (!hit) {
-                    cached = buildLocalNfp(document, settings, request.movingPart, owner, movingOrientation, fixedOrientation, pointLimit, request.candidateLimit);
-                    cache_.store(key, cached);
+                    cached = buildRealNfpLoops(document, settings, request.movingPart, owner, movingOrientation, fixedOrientation);
+                    solverCache_.store(key, cached);
                 }
-                for (const NfpCachedCandidate& local : cached.candidates) {
+                if (stats != nullptr) {
+                    stats->nfpLoopsGenerated += cached.loops.size();
+                }
+                NfpCacheValue sampled;
+                const Vec2 target = !request.regionAnchors.empty()
+                    ? request.regionAnchors.front() - Vec2{poses[owner].x, poses[owner].y}
+                    : Vec2{};
+                appendRealNfpLocalCandidates(sampled.candidates, cached, movingOrientation, owner, request.candidateLimit, target);
+                if (stats != nullptr) {
+                    stats->nfpLoopCandidatesGenerated += sampled.candidates.size();
+                }
+                for (const NfpCachedCandidate& local : sampled.candidates) {
                     Pose pose = local.localPose;
                     pose.x += poses[owner].x;
                     pose.y += poses[owner].y;
@@ -344,13 +271,53 @@ std::vector<ContactCandidate> NfpCandidateProvider::generatePartHoleCandidates(
     const std::vector<Pose>& poses,
     const ContactCandidateRequest& request,
     ContactCandidateStats* stats) const {
-    ContactCandidateRequest holeRequest = request;
-    holeRequest.includeHoleContacts = true;
-    std::vector<ContactCandidate> candidates = generatePartPartCandidates(document, settings, poses, holeRequest, stats);
-    candidates.erase(std::remove_if(candidates.begin(), candidates.end(), [](const ContactCandidate& candidate) {
-        return candidate.kind != AnalyticContactKind::NfpHoleBoundary;
-    }), candidates.end());
-    return candidates;
+    std::vector<ContactCandidate> out;
+    if (request.movingPart >= document.parts.size()) {
+        return out;
+    }
+    for (size_t owner : request.fixedParts) {
+        if (owner == request.movingPart || owner >= document.parts.size() || owner >= poses.size()) {
+            continue;
+        }
+        const TransformedPart fixed = transformPart(document.parts[owner], poses[owner], static_cast<int>(owner));
+        for (const TransformedRing& hole : fixed.rings) {
+            if (!hole.isHole || !hole.bounds.isValid()) {
+                continue;
+            }
+            for (double angle : request.angles) {
+                for (bool mirrored : request.mirrors) {
+                    Pose orientation;
+                    orientation.angleRadians = angle;
+                    orientation.mirrored = mirrored;
+                    const AABB movingBounds = transformedBounds(document.parts[request.movingPart], orientation);
+                    if (!movingBounds.isValid()) {
+                        continue;
+                    }
+                    if (movingBounds.width() > hole.bounds.width() + settings.collisionTolerance ||
+                        movingBounds.height() > hole.bounds.height() + settings.collisionTolerance) {
+                        continue;
+                    }
+                    const Vec2 translations[] = {
+                        hole.bounds.center() - movingBounds.center(),
+                        hole.bounds.min - movingBounds.min,
+                        Vec2{hole.bounds.max.x - movingBounds.max.x, hole.bounds.min.y - movingBounds.min.y},
+                        hole.bounds.max - movingBounds.max,
+                        Vec2{hole.bounds.min.x - movingBounds.min.x, hole.bounds.max.y - movingBounds.max.y}
+                    };
+                    for (Vec2 translation : translations) {
+                        Pose pose = orientation;
+                        pose.x = translation.x;
+                        pose.y = translation.y;
+                        appendValidated(out, document, settings, poses, request, pose, AnalyticContactKind::NfpHoleBoundary, owner, -1, 182.0, stats);
+                        if (out.size() >= request.candidateLimit) {
+                            return out;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return out;
 }
 
 std::vector<ContactCandidate> NfpCandidateProvider::generateCandidates(
@@ -363,3 +330,4 @@ std::vector<ContactCandidate> NfpCandidateProvider::generateCandidates(
 }
 
 } // namespace nest
+

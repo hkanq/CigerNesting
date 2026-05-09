@@ -279,9 +279,12 @@ void mergeStats(SolverStats& target, const SolverStats& source) {
     target.nfpCandidatesGenerated += source.nfpCandidatesGenerated;
     target.nfpCandidatesValid += source.nfpCandidatesValid;
     target.nfpCandidatesAccepted += source.nfpCandidatesAccepted;
+    target.nfpLoopsGenerated += source.nfpLoopsGenerated;
+    target.nfpLoopCandidatesGenerated += source.nfpLoopCandidatesGenerated;
     target.ifpCandidatesGenerated += source.ifpCandidatesGenerated;
     target.ifpCandidatesValid += source.ifpCandidatesValid;
     target.ifpCandidatesAccepted += source.ifpCandidatesAccepted;
+    target.ifpLoopsGenerated += source.ifpLoopsGenerated;
     target.nfpCacheHits += source.nfpCacheHits;
     target.nfpCacheMisses += source.nfpCacheMisses;
     target.contactCandidatesRejectedCollision += source.contactCandidatesRejectedCollision;

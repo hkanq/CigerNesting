@@ -2,6 +2,7 @@
 
 #include "geometry/clearance.h"
 #include "geometry/collision.h"
+#include "geometry/inner_fit_polygon.h"
 #include "geometry/transformed_shape.h"
 #include <algorithm>
 #include <cmath>
@@ -88,19 +89,6 @@ void appendValidated(
     out.push_back({pose, AnalyticContactKind::InnerFitBoundary, static_cast<size_t>(-1), -1, priority});
 }
 
-std::vector<Vec2> sheetAnchors(const Document& document, const EngineSettings& settings) {
-    const double left = document.sheet.origin.x + settings.margin;
-    const double bottom = document.sheet.origin.y + settings.margin;
-    const double right = document.sheet.origin.x + document.sheet.width - settings.margin;
-    const double top = document.sheet.origin.y + document.sheet.height - settings.margin;
-    return {
-        {left, bottom}, {right, bottom}, {left, top}, {right, top},
-        {(left + right) * 0.5, bottom}, {(left + right) * 0.5, top},
-        {left, (bottom + top) * 0.5}, {right, (bottom + top) * 0.5},
-        {(left + right) * 0.5, (bottom + top) * 0.5}
-    };
-}
-
 } // namespace
 
 std::vector<ContactCandidate> InnerFitCandidateProvider::generatePartSheetCandidates(
@@ -113,45 +101,27 @@ std::vector<ContactCandidate> InnerFitCandidateProvider::generatePartSheetCandid
     if (request.movingPart >= document.parts.size()) {
         return out;
     }
-    const double left = document.sheet.origin.x + settings.margin;
-    const double bottom = document.sheet.origin.y + settings.margin;
-    const double right = document.sheet.origin.x + document.sheet.width - settings.margin;
-    const double top = document.sheet.origin.y + document.sheet.height - settings.margin;
 
     for (double angle : request.angles) {
         for (bool mirrored : request.mirrors) {
             Pose orientation;
             orientation.angleRadians = angle;
             orientation.mirrored = mirrored;
+
+            InnerFitPolygonOptions options;
+            options.margin = settings.margin;
+            options.tolerance = settings.collisionTolerance;
+            const InnerFitPolygonResult ifp = buildInnerFitPolygon(document.parts[request.movingPart], orientation, document.sheet, options);
+            if (stats != nullptr) {
+                stats->ifpLoopsGenerated += ifp.loops.size();
+            }
+            const Vec2 target = request.regionAnchors.empty() ? Vec2{} : request.regionAnchors.front();
+            const std::vector<Pose> ifpPoses = sampleInnerFitPolygonCandidates(ifp, orientation, request.candidateLimit, target);
+            for (const Pose& pose : ifpPoses) {
+                appendValidated(out, document, settings, poses, request, pose, ifp.exactRectangular ? 116.0 : 98.0, stats);
+            }
+
             const AABB box = transformedBounds(document.parts[request.movingPart], orientation);
-            const std::vector<Vec2> anchors = sheetAnchors(document, settings);
-            for (Vec2 anchor : anchors) {
-                Pose pose = orientation;
-                const Vec2 center = box.center();
-                pose.x = anchor.x - center.x;
-                pose.y = anchor.y - center.y;
-                appendValidated(out, document, settings, poses, request, pose, 92.0, stats);
-            }
-            const double w = box.width();
-            const double h = box.height();
-            const Vec2 boxMin = box.min;
-            const Vec2 boxMax = box.max;
-            const Vec2 corners[] = {
-                {left - boxMin.x, bottom - boxMin.y},
-                {right - boxMax.x, bottom - boxMin.y},
-                {left - boxMin.x, top - boxMax.y},
-                {right - boxMax.x, top - boxMax.y},
-                {left - boxMin.x, (bottom + top - h) * 0.5 - boxMin.y},
-                {(left + right - w) * 0.5 - boxMin.x, bottom - boxMin.y},
-                {right - boxMax.x, (bottom + top - h) * 0.5 - boxMin.y},
-                {(left + right - w) * 0.5 - boxMin.x, top - boxMax.y}
-            };
-            for (Vec2 translation : corners) {
-                Pose pose = orientation;
-                pose.x = translation.x;
-                pose.y = translation.y;
-                appendValidated(out, document, settings, poses, request, pose, 104.0, stats);
-            }
             for (Vec2 anchor : request.regionAnchors) {
                 Pose pose = orientation;
                 pose.x = anchor.x - box.center().x;
@@ -168,7 +138,6 @@ std::vector<ContactCandidate> InnerFitCandidateProvider::generatePartSheetCandid
     }
     return out;
 }
-
 std::vector<ContactCandidate> InnerFitCandidateProvider::generatePartPartCandidates(
     const Document&, const EngineSettings&, const std::vector<Pose>&, const ContactCandidateRequest&, ContactCandidateStats*) const {
     return {};
@@ -189,3 +158,5 @@ std::vector<ContactCandidate> InnerFitCandidateProvider::generateCandidates(
 }
 
 } // namespace nest
+
+

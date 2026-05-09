@@ -90,9 +90,12 @@ inline void printClusterStats(const char* caseName, const LayoutState& state, co
               << " nfpGenerated=" << stats.nfpCandidatesGenerated
               << " nfpValid=" << stats.nfpCandidatesValid
               << " nfpAccepted=" << stats.nfpCandidatesAccepted
+              << " nfpLoops=" << stats.nfpLoopsGenerated
+              << " nfpLoopCandidates=" << stats.nfpLoopCandidatesGenerated
               << " ifpGenerated=" << stats.ifpCandidatesGenerated
               << " ifpValid=" << stats.ifpCandidatesValid
               << " ifpAccepted=" << stats.ifpCandidatesAccepted
+              << " ifpLoops=" << stats.ifpLoopsGenerated
               << " nfpCacheHits=" << stats.nfpCacheHits
               << " nfpCacheMisses=" << stats.nfpCacheMisses
               << " analyticFallbackGenerated=" << stats.analyticFallbackCandidatesGenerated

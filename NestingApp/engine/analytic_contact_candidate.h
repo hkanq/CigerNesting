@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "core/document.h"
 #include "engine/engine_settings.h"
@@ -38,6 +38,9 @@ struct AnalyticContactStats {
     size_t rejectedSheet = 0;
     size_t cacheHits = 0;
     size_t cacheMisses = 0;
+    size_t nfpLoopsGenerated = 0;
+    size_t nfpLoopCandidatesGenerated = 0;
+    size_t ifpLoopsGenerated = 0;
 };
 
 struct AnalyticContactRequest {
@@ -65,3 +68,4 @@ public:
 };
 
 } // namespace nest
+
